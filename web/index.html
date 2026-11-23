@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comunicador predictivo</title>
+<style>
+/* Tema oscuro fijo y de alto contraste, pensado para una tele vista a 2-3 m. */
+:root{
+  color-scheme:dark;
+  --bg:#0b0b0a; --ink:#ffffff; --muted:#b5b0a6; --card:#1b1a18; --line:#55524b;
+  --vowel:#ffc928; --vowel-ink:#000000; --cons:#126b57; --cons-ink:#ffffff;
+  --pred:#24221d; --pred-line:#b8973f; --action:#2f4d69; --action-ink:#ffffff;
+  --num:#3f4fcf; --num-ink:#ffffff; --danger:#c0392b; --soft:#34322d;
+  --go:#1d7042; --focus:#ffffff; --r:1.8vh;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;overscroll-behavior:none}
+
+/* Márgenes de seguridad de TV: 5% en cada borde */
+.app{position:fixed;top:5vh;bottom:5vh;left:5vw;right:5vw;display:grid;
+  grid-template-rows:19vh minmax(0,1fr) 9.5vh;gap:2vh}
+
+button{font:inherit;color:inherit;border:none;border-radius:var(--r);cursor:pointer;padding:0;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;outline:none;transition:transform .08s ease-out}
+button.pressed{filter:brightness(.8);transform:scale(.96)}
+button.off{opacity:.35}
+svg{display:block}
+
+/* Foco MUY visible (solo cuando se maneja con control remoto / teclado) */
+.kb button:focus,.kb .nav:focus{z-index:20;transform:scale(1.07);opacity:1;
+  box-shadow:0 0 0 4px #000,0 0 0 13px var(--focus),0 0 3vh 1.6vh rgba(255,255,255,.45)}
+.kb button.off:focus{opacity:.75}
+@keyframes bump{0%,100%{translate:0 0}25%{translate:-1vh 0}75%{translate:1vh 0}}
+.kb .bump{animation:bump .18s}
+.kb .msg:focus{transform:scale(1.02)}
+.nav{outline:none}
+
+/* Arriba: mensaje + Hablar / Borrar / Borrar todo */
+.top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1.6vw;min-height:0}
+.msg{background:var(--card);border:.4vh solid var(--line);border-radius:var(--r);padding:1.2vh 1.6vw;
+  display:flex;min-height:0}
+.msg-text{flex:1;font-size:6vh;font-weight:800;line-height:1.2;word-break:break-word;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--muted) transparent}
+.cur{color:#5fe0bf;text-decoration:underline;text-underline-offset:.6vh}
+.empty{color:var(--muted);font-weight:600;font-size:.75em}
+.topbtns{display:grid;grid-template-columns:repeat(3,18vh);gap:1.6vw}
+.tb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6vh;
+  font-size:3.6vh;font-weight:800;letter-spacing:.03em;line-height:1}
+.tb svg{width:8vh;height:8vh}
+.speak{background:var(--go);color:#fff}
+.del{background:var(--action);color:var(--action-ink)}
+.trash{background:var(--soft)}
+.trash.armed{background:var(--danger);color:#fff}
+
+/* Medio: palabra + predicciones a la izquierda, teclado a la derecha */
+.mid{display:grid;grid-template-columns:36fr 64fr;gap:2.4vw;min-height:0}
+.left{display:grid;grid-template-rows:1fr 3fr;gap:1.6vh;min-height:0}
+.curword{background:var(--card);border:.5vh solid #5fe0bf;border-radius:var(--r);
+  display:flex;align-items:center;justify-content:center;padding:0 1vw;min-height:0;
+  font-size:8vh;font-weight:800;letter-spacing:.05em;color:#5fe0bf;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.curword.idle{border-color:var(--line);color:var(--muted);font-size:5vh}
+.preds{display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:1.6vh;min-height:0}
+.pred{background:var(--pred);border:.4vh solid var(--pred-line);font-weight:800;font-size:5.6vh;
+  padding:0 1vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:0}
+.pred.blank{visibility:hidden}
+
+.main{min-height:0;display:flex;flex-direction:column;gap:1.6vh}
+.strip{flex:none;height:9vh;font-weight:800;font-size:4.4vh;background:var(--soft)}
+.grid{flex:1;min-height:0;display:grid;gap:1.6vh}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.vowel{background:var(--vowel);color:var(--vowel-ink)}
+.cons{background:var(--cons);color:var(--cons-ink)}
+.numk{background:var(--num);color:var(--num-ink);font-size:7vh;font-weight:800}
+.numgrid{grid-template-rows:repeat(5,1fr)}
+.abc{background:var(--soft);font-weight:800;font-size:5.5vh}
+.phrase{background:var(--pred);border:.4vh solid var(--pred-line);font-weight:800;font-size:4.2vh;
+  line-height:1.15;padding:.5vh .8vw}
+.short{background:var(--pred);border:.4vh solid var(--pred-line);font-weight:800;font-size:4.2vh;
+  padding:0 .5vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.enter{background:var(--go);color:#fff;display:flex;align-items:center;justify-content:center}
+.lab{display:flex;flex-direction:column;align-items:center;gap:.4vh;font-size:4vh;font-weight:800}
+.lab svg{width:6vh;height:6vh}
+
+/* Círculo / grilla de letras (igual que la versión táctil) */
+.ringwrap{flex:1;min-height:0;container-type:size;display:flex;align-items:center;justify-content:center}
+.ring{position:relative;width:100cqmin;height:100cqmin}
+.ring button{position:absolute;display:flex;align-items:center;justify-content:center}
+.rl{border-radius:50%;font-weight:800;font-size:16cqmin;line-height:1}
+.rg{font-weight:800;font-size:14cqmin;line-height:1}
+.rc{right:0;top:34.4%;width:20%;height:31.2%;background:var(--num);color:var(--num-ink);font-weight:800;font-size:8cqmin}
+.rmore{right:0;top:0;width:20%;height:31.2%;background:var(--action);color:var(--action-ink)}
+.renter{right:0;bottom:0;width:20%;height:31.2%}
+.ring .lab{font-size:4.6cqmin;gap:.6cqmin}
+.ring .lab svg{width:9cqmin;height:9cqmin}
+
+/* Abajo: Frases / Palabras / Mostrar */
+.bar{display:grid;grid-template-columns:repeat(3,1fr);gap:2.4vw}
+.bar button{background:var(--soft);font-weight:800;font-size:4.6vh}
+.bar button.on{background:var(--action);color:var(--action-ink)}
+
+/* Mensaje en grande */
+.overlay{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;gap:3vh;padding:5vh 5vw}
+.overlay.on{display:flex}
+.ov-text{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;
+  font-size:12vh;line-height:1.1;word-break:break-word;min-height:0;overflow:hidden}
+.ov-bar{display:grid;grid-template-columns:1fr 1fr;gap:3vw;height:15vh;flex:none}
+.ov-bar button{background:var(--action);color:var(--action-ink);font-weight:800;font-size:5.5vh}
+.ov-bar button.speak{background:var(--go)}
+
+.toast{position:fixed;left:50%;bottom:8vh;transform:translateX(-50%);max-width:80vw;z-index:50;
+  background:#fff;color:#000;font-size:4vh;font-weight:700;line-height:1.3;text-align:center;
+  padding:2vh 3vw;border-radius:var(--r);box-shadow:0 1vh 4vh rgba(0,0,0,.6);display:none}
+.toast.on{display:block}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="top">
+    <div class="msg nav" id="msgbox" data-k="msg" tabindex="-1" aria-label="Mensaje. OK para hablar"><div class="msg-text" id="msg" aria-live="polite"></div></div>
+    <div class="topbtns" id="topbtns"></div>
+  </div>
+  <div class="mid">
+    <div class="left">
+      <div class="curword" id="cur"></div>
+      <div class="preds" id="preds"></div>
+    </div>
+    <div class="main" id="main"></div>
+  </div>
+  <div class="bar" id="bar"></div>
+</div>
+<div class="overlay" id="ov" role="dialog" aria-label="Mensaje en grande">
+  <div class="ov-text" id="ovText"></div>
+  <div class="ov-bar" id="ovBar"></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+
+// ---------- Datos ----------
+var BASE = "de la que el en y a los no un se por es del las con una para lo su al como me más si pero te o mi le este sus esta todo ya ha cuando yo ser son sin hay está fue tu muy sobre también todos eso tiene nos porque qué así años dos bien entre puede desde hasta hacer ahora era esto vez hace nada ni donde parte solo algo tiempo día uno mejor mucho tan ver vida e ese han mismo siempre tengo cada después están gente esa estado estoy mundo va año les mas otro otros gracias otra cosas gran menos nunca personas tanto antes poco sea había tener trabajo durante ellos lugar creo cómo hecho quiero sólo aunque contra cuenta decir gobierno país soy todas casa estos forma he nuevo sido él aquí ella estas sí estaba estar hoy tienen alguien dice quien toda tres voy caso días momento bueno ciudad mis nuestro luego nacional parece nuestra poder pueden pues verdad historia mientras nadie nueva otras primera veces muchos cual debe dijo entonces tipo algunos general mayor tal además mal muchas primer según acuerdo cualquier dios fueron manera nombre unos ley medio partido bajo fuera hacia sino da grupo haber hombre puedo buena mujer persona será sistema casi fin hizo noche nosotros pasado presidente quiere tenemos tus eres méxico ahí cosa dentro españa estamos familia lado aún buen podemos misma pueblo tenía esos final mujeres política problema punto agua alguna equipo guerra saber sé vamos van ante dar embargo favor gusta importante información mañana pasa semana tienes claro dinero san social ejemplo estados horas igual millones número ti algunas hablar hora madre señor siendo centro derecho falta grandes haciendo hombres nuestros puedes amigos buenos cambio idea mierda muerte problemas tarde tras través tú meses podría realidad the algún amor dicho eran frente incluso primero real vas cuatro desarrollo hijo sociedad tema varios esas mí nivel niños seguro sería argentina hacen hemos juego llegar mano paso posible proyecto sigue somos unidos uso artículo cerca cierto grande países quién razón sabe todavía amigo madrid mayoría padre salir seguridad tierra visto único cuerpo programa segundo unas universidad último cabeza foto haya internacional mil palabras pasar público seguir servicio situación ayuda juan libro siguiente veo datos dejar educación proceso sentido cinco clase cuanto derechos ello estás hijos mes usted largo ningún orden puesto quieres realmente alto demás dicen diferentes español junto lista medios ninguna personal total trata video viene web base camino digo empresa especial hola paz policía queda salud sitio tomar tuvo zona calle cara línea mundial obra ojos os pensar servicios sociales allí atención debería escuela julio pueda quieren respecto segunda siento ve vivir capital casos etc libre luz mejores población quienes relación sabes suerte varias bastante cultura debido difícil dio estaban fotos fuerte fácil habla miedo minutos música poner pregunta rey vos apoyo dado deja demasiado espero fuerza iba josé manos mayo mucha oficial propio buenas chile control deben empresas encontrar inglés marzo peor serie sur trabajar última asi edad futuro justicia libertad nuestras pesar tampoco venezuela allá cantidad corazón diciembre encuentra existe imagen importa norte octubre político principal propia vi vista volver voz actual ambos elecciones estudio grupos media mira modo palabra pasó sean tenido abril campo hubiera internet joven nuevos plan puntos pública región significa comunidad dirección habían has investigación junio lleva nuevas partidos partir película república resto vuelta consejo dan dónde hacerlo llamado mercado movimiento noviembre papel precio respuesta seis simplemente única agosto aun cargo comida cuales ellas enero experiencia jefe leer llama llevar miembros padres pena producción siglo ustedes cabo común economía entiendo espacio febrero hablando haga necesita opinión oportunidad organización partes página resultados santa tenga vale acción arte condiciones conocer estuvo necesito noticias plaza septiembre u usar valor vivo calidad causa central director duda europa fecha feliz iglesia necesario obras políticos pronto resultado alta cambiar civil colombia hermano libros local mar mismos viaje últimos acerca acá alrededor campaña carrera ejército encima estudios interés llegó mensaje negro niño objetivo popular principio provincia recursos red río ah aquellos ayer blanco carlos comer compañía diciendo especialmente ganar interior lucha mediante nota pequeño prueba saben sol twitter vaya anterior buscar dia fuerzas justo lugares medida podía primeros principales temas ven éxito actividades adelante aire américa arriba autor baja diferencia dije entrar estilo juegos lejos luis mala maría militar muestra oro par plata puerta relaciones sola ayudar canción color contigo defensa dólares fondo fútbol hago hija humanos ideas importantes llega menor ministerio pocos puerto quería recuerdo semanas acceso armas busca comunicación congreso espera evitar finalmente fuente hubo jugar juntos ministro productos puta siquiera época acciones actividad banco conocido conseguir construcción corte cualquiera departamento diez existen formas mitad oficina presente queremos sector serio superior supuesto boca capacidad comprar crear diferente energía esperar haces hicieron malo mantener modelo natural necesidad pequeña preguntas radio sale trabajadores viejo administración comisión conmigo costa cree crisis culpa cámara diario domingo empezar entender esté fuego fui habrá jóvenes perder políticas pone posición suficiente título vive actualmente creer llamada mamá participación sangre toma violencia auto brasil carta china ciudadanos cuál facebook leyes principios probablemente rápido solamente área aires banda ciudades clases colegio contenido decisión encuentro entrada fiesta francia francisco imposible medidas pagar pedro permite pudo televisión unión vía abajo atrás capaz club comentarios darle di error gusto hechos mayores normal precios proyectos redes sabemos sexo siete siguientes tambien texto tiempos análisis apenas chica constitución contrario cuentas código dolor efecto habría isla izquierda mente odio perú pienso post presencia profesor quizás respeto ropa serán siguen tenían totalmente versión aqui barcelona chicos cielo cine cuestión debemos escribir española formación hice importancia industria instituto loco origen premio rico simple unidad vino and cambios canal cultural dando dejó derecha económica escrito esperando gustaría interesante jamás juicio miles noticia original peso pobre prensa propiedad revolución victoria votos vuelve york éste alma antonio artículos asunto buscando completamente conoce conocimiento estudiantes hospital humano imágenes marcha pasando pie puedan tecnología tipos trabajos verano aprender conjunto cuarto curso democracia don fe ganas género muerto nación negocio ocho pablo particular posibilidad profesional régimen suelo tuve ves visita ambiente ataque casas cuba económico edificio federal lengua mesa naturaleza noches pago piensa programas protección pruebas publicado sala santiago señora sueño teléfono trabajando transporte usa usuarios zonas acto animales asociación completo cuidado deseo detrás directamente doctor edición encuentran escuchar informe llegado manuel material metros momentos nacionales pareja perfecto presenta puso quedó razones recuerda venta viendo chicas confianza creación destino especie esposa hambre legal muertos negocios obtener pedir pensando perro propuesta pueblos quiera responsabilidad reunión revista solución territorio viernes vídeo aplicación aumento calles cama ciencia decía diga distancia doble familias jesús marca memoria motivo opción pase pesos práctica realizar referencia reforma reino resulta riesgo sacar sentir silencio temporada terminar autoridades comenzó comercio daño elementos equipos esfuerzo fuentes gratis hacía http internacionales locales miembro murió médico perdido producto próximo sabía salida selección sistemas tendrá teniendo vieja aparece aquel conozco contacto contar crecimiento despues excelente función independencia intereses larga llevó plazo salió santo término valores verdadero verde voto corrupción cruz dormir esperanza fiscal hermana ido incluye john líder militares nombres podrá propios públicos rato tales tengan tratar tribunal usuario ésta acaba amo barrio chico ciento comercial copa creen cuyo efectos elección empezó exterior habitantes hermanos honor instituciones llamar mejorar miguel morir oficiales parque pequeños podrían siente tanta triste alguno contrato david debate dieron diseño electoral hogar mando niña películas quedan recibir rojo similar vemos vienen ambas argentino azul carne cumplir dices discurso encanta entrevista españoles estudiar expresión extraño flores funciona garcía increíble inicio juez maestro marco materia ninguno oposición registro teatro términos vecinos asamblea caja canciones detalles dijeron empleo enfermedad escena estructura fines golpe grado hacemos incluyendo lleno lópez matrimonio misión pan parecer participar peligro pelo presión sección sos tercera venir vio amiga batalla café carácter deberían distintos duro estación evento francés gana google independiente ingresos intento japón lunes novia ofrece operación papa perdón planta primeras públicas sirve tantos teoría volvió baño características compañeros compra concepto dicha diputados directo distintas documentos enorme exactamente festival generales gobernador hotel lograr matar mismas necesitamos necesitan ocurre período piel planes pocas principalmente raro responsable rusia tamaño abierto afuera alemania blanca clave comienza compartir considera crítica dejado demanda dias diversos ecuador escuelas estará hagan hará jugadores luna ojo personaje piso pobres pro quizá recién reina representa salvo sábado tercer tierras tuvieron velocidad visión áreas alcalde altura anteriores asuntos candidato comentario competencia crees debajo diversas empieza escribió estan estaría estén facultad generación gestión hayan lee menudo presupuesto querido quieras suena supongo trabaja usando videos abogado abrir acabo anda antiguo basta carga cita consumo contexto correo culo cuya das decisiones ejercicio elegir entra figura genial historias jugador menores municipal naciones necesitas nueve objeto personajes pies publicación páginas supone tratamiento villa actos calor ciencias completa conciencia cárcel debes dejo digital distrito familiar fundación ganado histórico intención junta listo llevan londres máximo niveles ocasiones parecen parís pensé pide piedra podido privado propósito recordar reglas rica secretario sede soldados tomó técnica aeropuerto autoridad cadena capitán centros continuación delante europea fernando fondos gustan humana influencia judicial lenguaje literatura mensajes mexicano naturales online propias querer recibió saludos tantas actitud basura búsqueda clara coche corto cuánto documento doy dudas espíritu existencia familiares finales frontera funciones hablan idioma leche mirar obstante operaciones organizaciones planeta pobreza quedar segundos sexual super tengas tienda unido vacaciones vidas viva belleza blog construir cuándo declaración empleados estadounidense estatal ganó habia jajaja jorge león líneas mínimo números ojalá pantalla papá perfil periodo próxima pudiera tarea tendría termina tratado uruguay artista artistas aspectos caer compañero comunidades crédito cuesta depende distribución fuertes gas grave hablo identidad inteligencia inversión llena llevo mirada pedido pequeñas playa profesionales promedio puertas pérdida quisiera recibido resistencia seria sánchez terreno tratando valencia viven voluntad votar aceptar antigua asesinato aspecto cierta cocina comité conflicto consecuencia correcto dulce entiende errores explica física impuestos inmediatamente jueves medicina movimientos mío necesidades negra novela objetivos oh parecía pasan permiso presentación privada profesores puente reales reconocimiento regreso representantes rosa subir tenia terminó tren utilizar verdadera víctimas últimas abierta aguas altos bebé beneficios categoría claramente concurso consecuencias creado decreto dejan dura ejecutivo encontrado especiales estrategia eventos frío generalmente gobiernos hacerse iii india jaja latina llegan municipio patria penal pensamiento periodista personales ponen pregunto prisión realizado refiere santos sentimientos tomando accidente actualidad alimentos aproximadamente autores avión bandera biblioteca campos celular colores costo dejando deje delito deporte disco entrega escritor etapa funcionarios hermosa iniciativa jugando kilómetros liga llegaron llegue madera materiales mexicana minuto ocasión poca precisamente puestos regional resolución respuestas rodríguez ruta secreto suele tendencia toca tradicional acaso alumnos aquella audiencia bases bienes cargos comienzo condición crimen cuantos des diego disponible drogas extranjero formar frase global gonzález impacto inteligente intentar italia laboral motivos móvil presentar presidencia publicidad pude resolver seguidores sitios trato venga youtube alcanzar animal aparte bolivia ciudadano colaboración compromiso conferencia cuento cáncer debo deuda división enemigo estrellas explicar foro frecuencia gastos habitación herramientas humanidad humor institución interesa letras lima lindo llegada merece moral museo médicos mía normas notas palacio perdió pidió plantas plataforma publicó regalo religión rápidamente sectores segura tuyo técnico agentes bonito breve capítulo clientes conocida cumpleaños decidió defender eeuu estrella evidencia firma for guardia hubiese juventud llaman martes metro navidad new oportunidades perros probable procesos produce recibe responder sencillo sevilla señal sigo siguiendo superficie temprano tradición universo valle viento vuelto arma cartas colección comunes conversación directa escenario estuve exposición hablamos hermoso huevos igualdad invierno lados llevado luchar mirando moda método normalmente ocurrió oferta onda pasos quede regiones roja salvador seguramente sentencia sesión software sonido sorpresa sucede tarjeta tomado utiliza alberto asimismo bolsa brazos cambia cerebro ciertas clima comportamiento corriente corta debía discusión dominio encontró escala escribe espalda extranjeros gracia intervención libres montón opciones pasada presentó probar propuestas sensación show similares terrible vea vergüenza víctima órdenes acabar agencia anunció apoyar asistencia ayuntamiento bajar cabe cae candidatos comandante constante contiene convirtió crea cuerpos den diferencias ejemplos euros examen felipe fiestas fundamental igualmente impuesto indica industrial juega llamó malas mapa masa mentira miércoles novio nuevamente periódico placer podrán posibles premios representación requiere resumen roma seas seguido sueños titular turismo unidades vayan vender verlo verte viajar vuelo you actuar alcance anual archivo aumentar beneficio carajo cerrar ciertos comerciales continuar convierte cuello definitivamente dictadura década establecer famoso gato gay lectura mantiene martín michael niñas oye porqué posibilidades príncipe pérez quedado realiza reyes tiro torno usan abre abuela ahi cambiado carretera caída cola continúa convertido cristo daba daniel disposición dueño editorial espacios fernández hagas inglaterra labor letra lluvia malos marido modelos mostrar oeste opiniones periodistas piensan poderes prácticas puedas sentimiento seres situaciones suma tasa tenes tocar tranquilo universal usado viejos vivienda viviendo absolutamente alegría amistad anteriormente aparecen buscan castro cero cliente concierto considerado correr culturales córdoba dale descripción diría edificios elegido encontré evolución fuese haría iban iglesias indígenas infantil ingreso investigaciones mexicanos moneda motor nació negros occidental panamá permanente populares prácticamente punta realizó salga sub suelen traducción tráfico universidades ángel actuales adentro ana caliente caracas cariño chino consejos constitucional controlar coronel diputado disfrutar enfermedades enrique entero esperaba excepto experiencias filosofía guatemala hiciste james licencia millón parlamento pecho pelea pensaba perfectamente proteger publicaciones reducir salen secundaria toque tío volumen ámbito alianza amenaza art artes campeón castillo cataluña civiles colectivo complejo conexión consiste decirle divertido económicos encontramos escucha fotografía fueran intenta leyendo linda loca límite mezcla objetos parar paul perfecta poesía policías prefiero rafael raza reacción representante salón señores siga tendrán trae técnicas vieron áfrica árbol árboles útil amplia autos bancos bosque causas cuestiones dejen denuncia desarrollar económicas estudiante europeo factores fase histórica ideal ilegal imperio islas israel jornada límites maneras nacimiento participantes patrimonio pertenece pese pido piezas presentado primavera provincias recientemente reconocer romper rostro ruido sal sepa significado tomo vestido virgen vosotros actuación alcohol altas ama apertura caballo cierre circunstancias comenzar conocidos contenidos definición desastre décadas efectivo emergencia enlace felicidad firme fácilmente guía haz hecha herramienta inmediato jardín llamadas maduro martínez minas máquina personalidad perspectiva peña pierde podían publica quedarse quiso recuperar responde rock salido seguros viajes agricultura alemán alternativa amplio aquellas arena argumento ataques bajos caminar canales capaces cientos combate consulta convertirse corresponde daños decidido dejaron demostrar dignidad enviar extremo generar gol inferior mario mental montaña musical necesaria orgullo oriente paciente paga pasión permitir pieza pintura pista poniendo positivo promoción quedo reciente regresar relacionados reserva ritmo robo siglos suyo temperatura tono variedad washington únicamente academia activa activo agente antiguos ausencia bogotá cabello cercano considerar críticas dispuesto diálogo enemigos esfuerzos estadio goles incluyen inicial joder locura logró líderes madres maestros molesta muere métodos obvio ofrecer pacientes pidiendo plano pongo poquito producir pura quieran risa rural ruso servir socialista triunfo tropas ventana vuelva ánimo absoluto acceder actor andar anti apareció asegurar bar brazo caballero cuentan detalle díaz electrónico eliminar entró especies esperamos explicación francesa ganador george hojas iguales implica irse legales marina mina máxima múltiples nacido obviamente olvidar parecido piernas poeta primaria procedimiento puro puse quedaron recuerdos senado soluciones sube torres trump tuviera títulos unidas utilizando viste voces zapatos afirma americano andrés archivos asia barco bomba cayó cerveza clásico compañías consigue cortes cuadro cuantas cuáles cámaras declaraciones dedos delitos demuestra eduardo entendido federación gloria granada habido harry impresión instalaciones llegando llevaba man municipales numerosos oriental preguntar presentan responsables rápida saca salvar talento torre traer utilizado venido ventas visitar actores aniversario anoche aquello aviso cien comparación compras comunista conocen contó darse deportes dientes dificultades echar ejecución entorno estando europeos expertos extensión figuras físico homenaje interna leo leído listas llorar mata meta morales muchísimo muestran oficinas papeles pensado petróleo piden posteriormente potencial presentes profundo regla regular renta ricos serían señala taller textos ventaja abrazo adultos afecta baile blancos bonita ciudadanía conocimientos corea creemos dedicado descubrir desea enseñanza entidad entrenamiento enviado espectáculo esposo estés felices fenómeno fuimos funcionamiento guste horrible huevo incluido informes intelectual javier lanzamiento llevaron martin moderna ocurrido pared paro particularmente pasaron pensamientos preocupa propiedades provincial residencia ríos sonrisa tareas vecino vehículos veía abogados abuelo aplicaciones australia basado bella california colonia come comunicaciones cooperación correcta darte dará debió declaró digas discutir elemento encuesta entradas exacto extra extraña forman franco frases grados hubieran individual individuos infancia infraestructura ingeniería interpretación jueces legislación liberal llego lógica manejo ministros moreno oscuro oído partida permiten personalmente ponerse preguntó princesa progreso puesta rol seguimos sujeto torneo trabajan tradicionales turno vacío venezolano veremos vivimos algun aprobación católica celebración celebrar cerrado ciclo científico conde crecer criminal círculo decidir dirigido escritores establecido evidente excepción exteriores falso formato graves hablas habló hierro juro lago logrado mercados modos monte norma olor perdiendo peter pleno ponga porcentaje posterior potencia preparado pretende publicada reformas ricardo riqueza salario saludo sierra sucedió tabla utilizan acuerdos bienestar cantante castilla concentración conseguido copia corona cristina crítico deberá deberíamos dedo determinar doce encontraba envió establece estarán flor fracaso fábrica gasto gómez hacerle intentando margen pais paredes paseo peligroso rojas secretaría series suficientemente superar techo transmisión tuya ubicación veinte visitas viviendas absoluta aceite activos alejandro antecedentes anuncio aplicar audio azúcar broma cambió canadá castellano científicos cifras columna correspondiente creó cumple cura cursos descanso distinto duele dé empresarios escuchado esquina estuvieron genera gira grecia gustó habilidades imagino intercambio introducción lenguas luces organismo organizado pedo piedras posee promover pudieron raíz relacionado repente rosario siguió solicitud súper terminado testigos vayas vuestra véase vídeos ángeles índice acabó alcanza aparentemente caminos carreras conflictos culpable democrática difusión dirigida disponibles documental drama entera estuviera falsa feria inició juntas lucas magia mantenimiento moderno muro necesarios nicolás pareció podrías posiblemente puto queso recorrido relativamente religiosa restaurante sabor sentía supremo temporal tiendas trabajador vehículo vengo virus vías andalucía avance bailar beso campañas celebra chávez comenzaron complicado conclusión considerando continente costumbre destaca diarios digan dime empleado entidades escolar factor fechas hacienda impresionante infierno informó interno inversiones irán liberación localidad manda mandar mandato marcas maria metal numerosas paraguay pasajeros peores polvo portugal posiciones producido publicar realizada reducción representan resultó rivera senador señaló socio solidaridad sufrir talleres tecnologías templo teniente tercero terror tome top tormenta adiós armada bajas bola cable cantar comprender corre costos cuarta cuyos decide decirlo decirte dejes desarrollado descubierto eléctrica encontraron escritura estadísticas fraude gigante horario ingeniero instrumentos labios laboratorio llamo logra lujo manejar mejora mentiras municipios ocupa petición plena podrás podríamos previa privadas privados programación propone protesta reuniones rio robar robert silla solos suficientes termine toman vean venezolanos vicente vivido votación vueltas vuelvo últimamente abandonar abrió agradable arquitectura aumenta batería bienvenida brillante caras cena comunicado conoces contratos corriendo cristianos cubrir deber demostrado diablo duración encargado enfermo enlaces existir financiera franceses guerrero hablaba hablado hacerte héroe idiota importar italiano meter mio médica obispo obligado periodismo portal postura preocupación preparación primo productores próximos pusieron razon reconoce reconocido respondió restos señales sigan sueldo superiores suya tensión treinta tránsito tuvimos yendo argumentos barrios basada ben boda chocolate clasificación conceptos consideran coño cumplimiento cuántos dada definitiva deseos destrucción difíciles dirige espejo esperan estadounidenses fama formado fría hable harán heridas hielo idiomas imaginar indios inmigrantes interesantes irme jurado laura materias ofrecen one organismos oscar paquete parejas per periódicos propaganda psoe querían ramón rango rara retiro ronda rumbo sienten solar sombra símbolo testigo técnicos vigilancia aca agenda americana apoya argentinos asesinado atacar caribe carro che científica cifra concepción concreto conservación constantemente corrientes cristiano cuidar darme democrático detenido dibujo dichos dirigentes electricidad episodio escrita escritos estaciones fotografías gabriel ganando haberse hacían hugo humo independientes instrucciones integración judíos levantar leyenda link llamados llegamos llevando mendoza montañas nace necesarias obtuvo oficialmente paciencia pasaba patio perdida pico piloto presidencial presidenta prima recurso registros relacionadas religiosos river saco saliendo sociedades tendremos urbano acontecimientos adecuado americanos aparecer aparición arroz autorización avenida aventura básica caro ciudadana cobertura colombiano conforme conocí consiguió deberías dejamos desgracia detener empezaron enfoque entrenador evaluación explicó explotación faltan favorito financiero fuiste gordo habitual identificación incremento individuales iniciar invitados japonés limpieza locos macri mencionar mexico monedas nave necesitaba nieve obligación observar once originales pacto particulares presos profundidad prohibido putas quise realización regionales religioso renuncia revisión roberto sabido salieron sera sexuales tarjetas tendencias tonto trabajado transición trataba tratan venía verla vuestro afirmó alerta alfonso aplica aprendizaje básicamente básicos carmen casado caza combustible conviene curiosidad damos deportivo desayuno describe diversidad droga débil egipto ejercer emperador empezando ensayo escapar estabilidad estábamos exclusivamente experto expresa fallo fiscales funcionar fundador garantizar generaciones habilidad hacerme hernández hicimos honduras incendio instrumento interesado investigadores investigar lento lleve manifestaciones mueve originalmente paja palo piensas podamos pollo pones profunda radical relato reloj requisitos revisar riesgos roca salto secretos sentí sirven soldado ten teníamos traje universitario verdes vuelven abuso ambiental asco bandas bolívar caballos cartel castigo categorías ceremonia chileno chinos cierra computadora conducta confiar cortar créditos cubierta dame demas derrota descubre destacar dieta establecimiento estructuras famosa fórmula golpes gracioso heridos https ilusión instante intentó lanzó lágrimas mama medalla multitud nieto nuclear numero ocupación olvidado organizar pacífico pelota pendiente permitido plato porno pre previamente quita ramos reciben recomiendo recuperación rueda soledad sorprende supuestamente temor tirar tranquila ubicado urgente verdaderamente verse virtual xix álbum árabe únicos aborto ancho apellido aprobado aviones borde canto conductor consciente contento conversaciones curioso dama desierto destruir directora duque editor educativo enseñar entregar equivalente escuchando femenino feo ficción fronteras funcionario fundamentales fué genio hijas hoja individuo invitado isabel jefes limpiar louis lástima manga marcos mediados medias mencionado mostró máquinas necesariamente orientación patrón positiva procedimientos profesora quedando quinto rendimiento reservas reto richard salarios sentado sientes suprema titulado típico une valiente vende vengan verga vicepresidente acepta acusado adecuada analizar app arco asesino asiento asumir bolas caballeros calma caminando capa charla creía cuentos cumbre declarado dejas desaparecido embajador equilibrio equivocado escribiendo excusa exige expansión firmado guerras hechas hermanas identificar incluir lector logro mecanismo miren negativa ocupado olvido orto parada poderoso portada previo produjo profesión puebla raíces rechazo refiero reflexión rescate situado tesis tía ventajas vivos votantes órgano órganos alas amigas aprende armadas arreglar asegura atender autonomía bienvenido botella básico cajas campeonato cantidades cerro ciertamente coger colegios composición concha condena conocemos consigo constituye continua creciente criterio críticos daría data define digamos electorales emociones empiezan entienden espiritual femenina fiel fortuna gabinete guillermo gustado habiendo huelga inicia instagram instalación lanza limpia manual maravilloso mate menciona miami muchachos muestras negativo obama oración orgulloso parcial permitió producen quitar recientes religiosas respectivamente ridículo sabia seguimiento sergio sesiones socios suave tendrás teresa territorios tira transformación trató universitaria world académico actriz actualización adicional alemanes amarillo aprovechar basa bello bravo cabezas catalán cercana charles city coalición coches combatir coordinación culto dato dependiendo depresión dioses distinta efectivamente electrónica emoción empresario escucho esencial espada expresar flujo galería garantía gasolina habana hiciera hilo indio indígena interesados jack jajajaja laborales latinoamérica liberales llevamos metas mínima móviles preparar propietario protagonista quito química realizan revela rusa sentirse sienta siria sufrido tengamos totalidad tratados urbana versiones violación vivía volviendo acompañado alex alimentación alonso alternativas anuncios británico combinación conocía cultivo cuántas células césar desconocido dijiste dueños echo efectiva embajada empecé específico fijo formal gris gráfico guarda históricos hospitales héroes incluidos inmediata ira jean juvenil largas literalmente llamas maestra manifestación matemáticas mecanismos moto ordenó oír pagan pagos pasamos pesca pinta plazas posesión prioridad reglamento respetar rurales sacó salsa salta separación sucedido tasas tesoro toledo toneladas tribunales zaragoza éstos ética acaban acero ala aparato armado autobús barra bicicleta bolsillo busco camiseta casualidad cinta cirugía coca comparte creando decían departamentos determinado dolores domicilio dominicana escenas esclavos estaré estatales existentes explosión extrema falla fans firmas gatos gil guardar gustaba hogares informa inocente internos lanzado lectores leí limpio llevará mark max merecen montevideo moscú murieron málaga nacionalidad palma pendejo poema pri promesa protestas pudieran queja quinta quiénes referencias reproducción sabiendo sanidad simples sindicato soberanía sufre taxi terroristas testimonio tom tomaron transparencia uniforme venezolana verdaderos via abiertas adolescentes aldea amante android aprendido asistir asociaciones autónoma bebe beber black cambiando cansado chiste circulación cometido comienzos componentes conducir consta crece criminales crímenes darles deberán desaparecer descarga dibujos empezamos específicamente facilitar famosos fila firmar fumar futbol gritos hayas henry herido ideología ignacio imaginación inflación integrantes kim mantienen mató misterio nariz nicaragua occidente onu oscuridad paisaje participa pensamos pensó poblaciones pop preciosa quince redacción renunciar repetir salas seguirá sensible sigues sobrevivir suiza tristeza ventanas accidentes administrativa ahorro alquiler amable antiguas apariencia ayudan banca bellas cadenas caos censo cincuenta colectiva compuesto contactos contando convertir crean criterios crónica culturas delegación despacho despertar despierta docente documentación eje estrategias finanzas fortaleza ganancias haré integral intenciones invertir inútil kilos lección legado levanta llamaba lluvias luchando mariano masas muerta muertes panorama park pastor pedazo permanecer presidentes prevención profundamente quedaba querida rama raúl revistas revolucionario roto ruedas seamos segun seguía serlo signo sois sufrimiento termino thomas todavia tomas ultimo unico vaso veracruz visitantes william abiertos acabado administrativo amenazas articulo ayudó bloque bosques campamento clínica condenado conferencias convenio creada cristal cristiana decimos dedicada defiende definir desarrolla dirigir dispone dulces ejercicios elaboración eras estable estreno exceso extranjera financieros giro gratuita grito institucional juzgado largos liderazgo llegué llenar longitud lorenzo min mover muchacho naranja negociaciones olvides otoño pagado permita placa podremos pongan recepción recoger refugio regalos representar represión ruiz sacerdote sebastián seco secretaria sufrió supo tardes tele tenéis territorial toro tragedia venganza vigente volar ácido ademas afectados apartamento barato biblia bombas buscas calderón candidatura característica caído censura cerrada comiendo comprende conquista contestar corazones creciendo cruzar cuenca desaparición destacado dichas dificultad dudo dólar emisión entrevistas españolas esperanzas exigir extremadamente favoritos felicidades finalidad fruto guadalajara guitarra ignorancia incidente independientemente informado inscripción inspiración invitación justa linea love mención milagro nena normales nosotras notable observa ocupar océano ofreció parezca pasará pasta poemas preso propietarios quedé reducido regresa regulación romero rompe suspensión terrenos terrorismo trajo turistas viejas vital víctor whatsapp xvi adolescente adquirir alegre altamente amar america aves bordo calendario cancha catedral causar centrales circuito circular cobre compañera comprobar construido correa costumbres cruel cuadros cuyas difundir digitales dinámica disciplina discriminación disculpas dió dosis enamorado enfrentar envío escándalo esencia estaremos expectativas facilidad felicitaciones fifa gesto grabar habéis hagamos humilde impulso informar instancia izquierdo jaime joda lentamente limitado llave llegará llorando multa negras niega noble nombrado obtenido participaron participó pasé peces pelear percepción pertenecen plantea policial prisioneros privacidad productor promesas rabia rayos realizadas restaurantes rodrigo santander semillas sentimos soporte sostiene tomás tour tradiciones utilizada vimos actuaciones aliados all apple apuesta avanzar ayudas añade barcos big captura carnaval carreteras chilena comprensión convención convocatoria creador dedica descubrimiento discos diseñado disfruta eco ediciones eliminación empezado encuentras encuentre envía escuche estima excelencia exámenes fabricación federales financiación frank ganadores gerente herida impedir importe info ingenieros intensidad juzgar lanzar legislativo listos maldita mancha mauricio obliga obligaciones pecado penas pensiones planificación podes polémica prevenir psicología quedamos queria refleja rosas rusos rutas récord sacado selva silva socialismo subió teléfonos trabajaba vargas vistazo visual vol wow xxi admitir agregar ansiedad asesinatos asesinos bob bolsas camión canta certificado citas claras comentó considerada consumidores correos creencias critica criticar cuarenta cubano cubierto cubre declara declarar delincuentes dependencia depósito desafío descubrió destinado diaria disculpa docentes embarazada enormes enseña falsas garantías gravedad gustavo herencia innovación intentado invasión julia kevin latino llenos magnitud maldito matando mataron medicamentos misiones monumento murcia negar observación olímpicos perdieron perdí pizza platos plástico portugués prepara protocolo provoca próximas pérdidas reporte residentes responsabilidades rival sello semejante señalar signos solicitar solucionar suicidio síntomas teorías terminan trayectoria tumba usos utilización vencer verás vivió volvieron éstas aceptado actúa adicionales agradezco agregó ampliamente anillo aporte aérea bloqueo cambian capacitación carbón cobrar comedia competir completar conclusiones contribuir correspondientes cuota defensor dejé denuncias desempeño dimensiones dispuestos eficaz encontrarse estadística existía fan fiebre fiscalía florida funcionan gane griego guardias herrera huesos indican industriales industrias intelectuales international iphone irá ladrones llamando llame llevas logros manifiesto mercedes miseria novelas ocurrir ofertas ojala olvida pagina pantalones paulo peruano pierna play ponte preguntan previsto probado quedará razonable referente respirar revés sacrificio salí sano sencilla separado sombras street surge tenis terapia terrorista tocó tranquilidad transferencia trate turquía ubicada veamos vega venden videojuegos vidrio vii virtud abandonado acta actitudes agrícola aprendí aprobó atmósfera bebés bienvenidos blancas brasileño bus capítulos celebró chris ciego comisiones conciertos confirmó confusión conoció continuó costado cuartos cómodo danza decidieron detenidos diccionario dirigió dispositivo echa elena encuestas estándar europeas falsos fantasía fija frecuentes fresco habrían hitler imponer iniciativas inmigración inteligentes lana limitada madrugada mantuvo marcado medina metido miranda misa motores mueren nervioso ningun núcleo obligados patas persecución pesado pescado plataformas popularidad pozo precioso preparados propuesto quejas rajoy recibieron registrado remedio reputación rumores sinceramente sindicatos this trenes universitarios usó vinieron vives alcanzó alemana amado anna apunta aragón asistente ayude añadir caen casco chicago cocinar colectivos confirmar contaminación copias cumplido descansar descargar diagnóstico digno directores dormido doña empleos ensayos estabas estudiando explicaciones frutos galicia grabación grasa gritar huir inglesa intentos japonesa joaquín jurídica macho mail mandó mary maíz mire muriendo músicos ola operativo oral organizada ortega paraíso pasen pendientes península poderosa posteriores practicar preocupes presa proporciona proporcionar provocar quedarme queres reacciones recomendaciones relevante rutina sabían senadores sepan soportar surgió tetas time times tomen ultima veas verá útiles aclarar adopción adoptar alarma alegro almas amanecer anuncia apartado asalto berlín botón básicas cercanos colegas colombiana colonial comenta conduce confirma confirmado conocidas consentimiento contaba contado conveniente corporación cortos decidí demandas descuento desempleo deudas direcciones diré dispositivos duelo educativa embarazo emocional encanto entran escuché escudo estancia etapas existente favorita filas flota fomentar frecuente frecuentemente fruta fuga ganan garganta gráfica helado himno house ideales informática investigador ios juegan king lobo lograron lógico margarita matan medellín mensual mete miras monterrey mostrando muebles musicales negociación oficio parado pierden presentarse préstamo receta recibo rincón sagrado salgan salimos salvaje sanciones satisfacción sexy situada smith solía sonora sorprendente soviética steve sufren sugiere supe tela texas utilidad vasco visible vistas windows with éxitos aceptación adn agustín alcanzado alegra apreciar atractivo avances azules bahía billetes camisa campesinos capitalismo cargar chilenos cia clásica com cometer comprado comunistas debates directiva discursos elevado elige eléctrico encantaría encuentros enferma enfermos enfrente entrado escribo esperemos estimado estrés eva expresó federico gimnasio hectáreas hey hombro jodido judiciales luchas mac maravillosa marketing millas minería mini mundiales mérito negó nubes oaxaca ocultar oscura papas pasaje pelotas pez preocupado preparando provocó publicados queridos ramírez realizaron regresó relacionada renovación retorno robado rojos rompió semestre servidor sintió sujetos suárez terminal terremoto tony trabajó trampa tremendo triple unirse vela vestidos vuelos absurdo adulto afectan agencias alan alimento alumno anuales aprobar artística ascenso asientos asociados ayudando añadió brutal cartera catálogo celulares cementerio colombianos comenzado consumidor continental convencido corruptos crema cubana cumplen debilidad debían denunciar desaparecidos destacó detención disney durmiendo déficit eficiente entregó entusiasmo esperado estúpido etiqueta expresiones extranjeras filipinas fox from fuertemente geografía golfo haberlo historial impide incluida ingleses intenso intentan jamas jiménez joe jugado jurídico justamente líquido mantenerse mejoras mide militantes minerales miro miss mito modernos monto mortal municipalidad osea participan pasaporte pega perra propuso proveedores pánico realizando rebeldes recibiendo refugiados respaldo romano saludable saque sentidos seré sirvió tocado tuit utilizados vete volví vuestros walter árabes aburrido adaptación ajuste alfredo amas anime armados asesor asturias atentado automáticamente bebidas boy cambie campus caridad celebrado clásicos comentar comienzan conservador considero contratar coraje corresponden creas cuerda cálculo duró empresarial entretenimiento espacial específicos esquema estética extremos falleció financiamiento free frutas futuros físicas gama gastar gutiérrez habíamos horarios horno horror humanas inauguración inclusión inevitable inseguridad invita judío justificar legalmente libras mantenido maravilla marihuana masiva mia miel naturalmente navarra notar obtiene ocurra orígenes penales permanece peruana piano pinche podéis ponerle positivos preciso presentaron ramas realizados reduce requieren retrato sabiduría sales sana scott sepas servidores star suceder sucesos tarifas tiros titulares traición trama usada usados valladolid vendido vietnam voluntarios adquisición africa alexander almuerzo amantes antigüedad apoyan asociado balance banderas bebida becas bomberos canarias capas casarse causado citado competencias compró considerable convento coro cádiz daban decenas deportiva describir desigualdad dificil disputa electrónicos espectacular estudia evidentemente evita full funcionando gritando gustos hacerla hipótesis hueso humedad ida inicialmente integridad juárez lamentablemente lea lealtad lecciones lesiones libremente ligeramente marta medir mentir mike modificación modificar monarquía morena muros news piense pilar pisos playas poetas ponemos posta repito sabías sacan salgo seminario señorita siguieron socialistas suministro tejido tendré test volverá xviii abandono abusos acompaña acoso alrededores alturas angel aportar arreglo arturo autopista azar buscamos camiones cantando capacidades católicos causó center cerró choque circo colón consenso consideración continuidad controles cueva defecto demuestran eficiencia entrando escolares estemos exclusiva habitaciones hermandad internas jackson jesucristo jones joseph jurisdicción lucía majestad manzana marruecos mato maya musulmanes nacer natal negociar ordenador pasas pedimos pensión perfección piscina pistas podria polonia precisión pregunté rayo recoge relatos retirar rubio salamanca seca secciones secuestro sensibilidad serios sexto sonidos subiendo sudáfrica sufriendo suyos tomé traslado truco tubo vaca vapor vine violento épocas académicos administrador afirmación agresión alba albert alli american andan apoyando artificial aventuras balas barba baños bretaña británica brown buscaba cabrón campeones civilización claves colocar consejero considerados constituyen contienen contraste convencer correctamente costas coste creencia cuero damas darnos defensores demasiada detuvo devolver diana diera dimensión dirigente disminución diversión doctores ejemplares encantan escalera escasez escritorio especialista específica esperas estableció eterno extiende extraordinario extraños fallecido gonzalo grabado harto hoteles ilegales implementación impunidad inocentes intensa japoneses jose kong laguna lamentable llamaron llegas llenas marcar marqués metió mostrado míos navarro nick novedad novedades obligatorio obstáculos otorga pelotudo piedad ponerme preguntando presentada press prestar prohibición publico quedas quédate rapido reconstrucción reunir rodeado sed setiembre sexta significativo sobra solas solitario sueldos tecnológico tenés tigre trinidad ucrania unida urgencia vendedor vota afectado agrega aguantar ahorrar alza andes aseguró autora beca bill borrar can cardenal cima click clubes comerciantes compré conservar contribución cubanos day defectos dejaba delgado demonio denominado descenso dictador dirá disposiciones doctrina eficacia elegante entraron entro escoger estómago expedición explotar externa fantasma gano géneros habrán haremos harina hollywood importan ingresar italiana juicios lavado lesión literaria lleguen mami mapas mediodía modificaciones molesto mono negativos norteamericano oculta opuesto oso pares paris patrones paula pedazos pene pibe planos plus prefiere preparada prisa productividad proviene quemar rasgos reconoció recuerdan reparto repite restricciones rocas sara satisfacer servido serás siglas sincero sopa sra suecia símbolos tapa tortura trabajamos transmitir trono vera vientos ésto únicas académica acusaciones advierte aliento angeles anunciado asistentes ave averiguar besos cansada carolina certeza chistes claridad colaborar coma compuesta consideró corrupto creatividad cuadrados cuartel cultivos cuotas custodia decirme divina duros electo elegidos encargo encontraban entendí escribí espaldas espectadores específicas evaluar exista expediente exportación facil fea fieles formando fortalecer fundada gobernantes gobernar gorda griegos guapa guapo hidalgo hong jugo labores lamento libertades like limita lisa manteniendo maquinaria masculino microsoft minoría molina motivación muera mérida navegación nervios nomas ocupada participado parto pasaría pedirle peligrosa poderosos portavoz posts probabilidad préstamos pudiendo puertos radicales referéndum reír sarah secreta simón subido terminaron that tomada típica valen vecina veras vigor vuelvan acabe ampliación aprobada artístico ayudado ayudará aéreo bala balón barrera bronce cadáver caracteriza carteles católico claros colaboradores colonias comidas comparten conexiones conozca continuo copas corazon círculos desean deseas destacados destacan determinación donald duerme emilio enfrentamiento engañar enseguida episodios especialistas estatua feminista ferrocarril finalizar futura ganaron hablemos holanda identificado idiotas ignorar inclusive indicado iniciado interpretar iría iva ladrón legislatura levante ligera literario live manipulación mateo mecánica mesas montar muchacha naves nazi odia operar orgánica paralelo parientes parques pata patente pedí perdona poseen preguntado presupuestos procedentes prometo proporción públicamente raras recomienda recordó reflejo relevantes retirada reúne romanos saga sam señalado simon sombrero subida supera supervivencia talla teclado temo tendrían tocando tonta tontos tribu usualmente variables verlos vidal wikipedia abuelos acento acusación afectar ambientales ampliar ando aprendiendo apropiado armonía atraer aumentó auténtico baby bilbao brian brinda cables capilla capitales caracteres cerdo chat colega comparar condado constituyente contener contesta controla creció cruce cuchillo códigos darán deba dejarlo desapareció determinada determinados discusiones disparos dispuesta dorado ducha duras enfrenta esclavitud est estándares eta experimento factura fidel financieras georgia globo goma homicidio hungría incapaz incendios inferiores ingles instalar integrado interacción jardines lenta limón llegaba maquillaje marchas matemática mentalidad micro ministra musica mágico nacionalismo narrativa neta netflix obrero observaciones olvide pagando perspectivas podia presta privilegios protagonistas realista rebelde reseña reveló sabio saldrá salía sobrino sorprendido sucio sumamente supuesta tabaco taylor temperaturas tienden tokio tomamos use variable verificar vivas vínculo aceptó aficionados agrícolas algodón ancianos apoyado aprueba arresto asume atlético aumentando boletín caiga carbono charlie climático cobra complejos corredor cortas creí decirles demostró desfile ejecutar eligió encuentren entregado escuchas esfera estupidez exclusivo extinción extraordinaria facultades ficha formada foros fáciles gratuito hables honesto huele huella huracán indias infinito jugada jugó lara lateral ligero limitaciones llevaban manifestó marcelo mega migración miran montes muñoz músico nacionalista necesitar nobel occidentales opera ordenado palos pasados permitirá pidieron pos precisa prestigio privilegio productivo prohibir práctico puentes reconocida recurrir referirse reflexiones retirado retos retraso reunido";
+var DOMINIO = "quiero tengo estoy duele dolor sed hambre frío calor mamá hijo celular teléfono pagar plata banco sueldo enfermera enfermero médico médica doctor doctora cama almohada posición cambiame moverme pierna piernas brazo brazos espalda panza pecho cabeza respirar aire tubo sacame miedo cansado dormir apagá prendé tele música llamá avisale gracias peor cuándo dónde quién casa abrazo beso perdón ayudame rascar pica boca seca labios baño pis limpiar fiebre náuseas mareado ruido silencio quedate vení rápido despacio llaves contraseña clave mensaje whatsapp mail transferencia factura urgente hielo tapame subime bajame costado anteojos cargador operación resultado incómodo molesta saliva tos garganta pies manos aspirame aspirar flema deuda impuestos contador cuota millones jefe traslado vomitar";
+var SHORTCUTS = ["Vito","mamá","Luz","pagar","plata","deuda","Estado","ARCA","AFIP","impuestos","contador","cuota","millones","jefe","Omint","Italiano","traslado","aspirar","flema"];
+var FRASES = ["Me duele","Tengo sed","Aspirame","Me falta el aire","Cambiame de posición","Tengo frío","Tengo calor","Tengo miedo","Llamá a la enfermera"];
+// Frases modelo para predecir la palabra siguiente
+var SENTENCES = [
+ "tengo sed","tengo frío","tengo calor","tengo miedo","tengo hambre","tengo náuseas","tengo la boca seca",
+ "tengo que pagar","tengo que pagar una deuda","tengo que hablar con mi contador","tengo una deuda con el Estado",
+ "me duele la panza","me duele la espalda","me duele el pecho","me duele la cabeza","me duele mucho","me duele acá",
+ "me falta el aire","me pica","me molesta el tubo","me quiero ir","me quiero dormir",
+ "no puedo respirar","no puedo dormir","no quiero","no sé","no entiendo",
+ "aspirame por favor","cambiame de posición","subime la cama","bajame la cama","tapame",
+ "quiero ver a Vito","quiero hablar con mi mamá","quiero hablar con el médico","quiero dormir","quiero agua",
+ "quiero mi celular","quiero saber qué me pasa","quiero ir al baño","quiero estar solo",
+ "llamá a la enfermera","llamá al médico","llamá a mi mamá","llamá a mi contador","llamá a mi jefe",
+ "avisale a mi jefe","avisale a mi mamá",
+ "estoy cansado","estoy bien","estoy mal","estoy incómodo","estoy mareado",
+ "qué me pasa","qué día es hoy","qué hora es","cuándo me sacan el tubo","dónde está mi celular",
+ "le debo plata al Estado","hay que pagar los impuestos","hay que pagar la cuota",
+ "la clave está en mi celular","la contraseña del banco",
+ "te quiero","gracias por venir","cuidá a Vito","decile a Vito que lo quiero","perdón",
+ "quedate conmigo","apagá la luz","prendé la tele","poné música","voy a vomitar"
+];
+
+// ---------- Utilidades ----------
+function norm(s){
+  return String(s).toLowerCase().replace(/ñ/g,"\u0001").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"").replace(/\u0001/g,"ñ").replace(/[^a-zñ0-9.]/g,"");
+}
+function isNum(w){ return /^[0-9.]+$/.test(w); }
+var VOWELS = ["a","e","i","o","u"];
+var ALL = "abcdefghijklmnñopqrstuvwxyz".split("");
+var CONS = ALL.filter(function(c){ return VOWELS.indexOf(c) < 0; });
+
+// ---------- Vocabulario ----------
+var vocab = {}; // norm -> {d: forma con tildes, w: peso}
+function addWord(display, w, keepDisplay){
+  var n = norm(display); if (!n || isNum(n)) return;
+  if (!vocab[n]){ vocab[n] = {d: display, w: 0}; }
+  else if (!keepDisplay && vocab[n].d === n && display !== n){ vocab[n].d = display; }
+  vocab[n].w = Math.max(vocab[n].w, w);
+}
+BASE.split(" ").forEach(function(w, i){ addWord(w, 600/(i+8), true); });
+DOMINIO.split(" ").forEach(function(w){ addWord(w, 30, true); });
+SHORTCUTS.forEach(function(w){ if (!vocab[norm(w)]) addWord(w, 30); });
+SENTENCES.forEach(function(s){ s.split(" ").forEach(function(w){ addWord(w, 5, true); }); });
+
+// Pares de palabras (palabra anterior -> siguiente)
+var BIG = {};
+function addBig(map, a, b, k){ map[a] = map[a] || {}; map[a][b] = (map[a][b] || 0) + k; }
+SENTENCES.forEach(function(s){
+  var prev = "^";
+  s.split(" ").forEach(function(w){ var n = norm(w); addBig(BIG, prev, n, 1); prev = n; });
+});
+
+// ---------- Aprendizaje (solo en este dispositivo) ----------
+var LKEY = "comunicador_v2";
+var L = {u:{}, b:{}, d:{}};
+try {
+  var raw = JSON.parse(localStorage.getItem(LKEY) || "null");
+  if (raw && raw.u) L = raw;
+  else {
+    var old = JSON.parse(localStorage.getItem("comunicador_aprendidas_v1") || "{}") || {};
+    Object.keys(old).forEach(function(n){ if (old[n] && old[n].c) L.u[n] = old[n].c; if (old[n] && old[n].d) L.d[n] = old[n].d; });
+  }
+} catch(e){}
+Object.keys(L.d).forEach(function(n){ if (!vocab[n]) vocab[n] = {d: L.d[n], w: 5}; });
+function save(){ try { localStorage.setItem(LKEY, JSON.stringify(L)); } catch(e){} }
+function learn(n, display){
+  if (!n || isNum(n)) return;
+  var prev = lastPrev();
+  L.u[n] = (L.u[n] || 0) + 1;
+  addBig(L.b, prev, n, 1);
+  if (!vocab[n]){ vocab[n] = {d: display, w: 5}; L.d[n] = display; }
+  save();
+}
+function W(n){ return (vocab[n] ? vocab[n].w : 0) + (L.u[n] || 0) * 25; }
+function succ(prev){
+  var m = {}, tot = 0;
+  [BIG[prev] || {}, L.b[prev] || {}].forEach(function(src, k){
+    Object.keys(src).forEach(function(n){ var c = src[n] * (k ? 2 : 1); m[n] = (m[n] || 0) + c; tot += c; });
+  });
+  Object.keys(m).forEach(function(n){ m[n] = m[n] / tot; });
+  return m;
+}
+
+// Modelo de letras de respaldo
+var LBIG = {};
+Object.keys(vocab).forEach(function(n){
+  var w = vocab[n].w, p = "^";
+  for (var i = 0; i < n.length; i++){ addBig(LBIG, p, n[i], w); p = n[i]; }
+});
+
+// ---------- Predicción ----------
+function suggest(prefix, prev){
+  if (isNum(prefix) && prefix) return [];
+  var p = succ(prev);
+  var keys;
+  if (!prefix){
+    keys = Object.keys(p).sort(function(a,b){ return (p[b]-p[a]) || (W(b)-W(a)); });
+  } else {
+    keys = Object.keys(vocab).filter(function(n){ return n.indexOf(prefix) === 0; })
+      .sort(function(a,b){ return ((p[b]||0)*1000 + W(b)) - ((p[a]||0)*1000 + W(a)); });
+  }
+  return keys.slice(0, 4).map(function(n){ return vocab[n] ? vocab[n].d : n; });
+}
+function letterScores(prefix, prev){
+  var p = succ(prev), s = {}, any = false;
+  Object.keys(vocab).forEach(function(n){
+    if (n.length > prefix.length && n.indexOf(prefix) === 0){
+      var c = n[prefix.length];
+      if (ALL.indexOf(c) < 0) return;
+      s[c] = (s[c] || 0) + W(n) + (p[n] || 0) * 5000; any = true;
+    }
+  });
+  if (!any){
+    var last = prefix ? prefix[prefix.length-1] : "^";
+    var lb = LBIG[last] || {};
+    Object.keys(lb).forEach(function(c){ s[c] = lb[c]; });
+  }
+  return s;
+}
+function ranked(set, prefix, prev){
+  var s = letterScores(prefix, prev);
+  return set.slice().sort(function(a,b){ return (s[b]||0) - (s[a]||0); });
+}
+
+// ---------- Estado ----------
+var text = "";        // palabras ya confirmadas, terminan en espacio
+var word = "";        // palabra en curso
+var screen = "main";  // main | num | phr | words
+var page = 0;
+var armedTimer = null;
+var hist = [];        // pila para BORRAR: cada acción que agrega algo guarda el estado anterior
+
+function lastPrev(){
+  var t = text.trim(); if (!t) return "^";
+  var tok = t.slice(t.lastIndexOf(" ") + 1);
+  return isNum(tok) ? "#" : norm(tok);
+}
+function snap(){ hist.push({t: text, w: word}); if (hist.length > 300) hist.shift(); }
+
+// ---------- Botones: toque, mouse y control remoto ----------
+var kb = true;          // true = se maneja con control/teclado: el foco se ve
+var wantFocus = null;   // clave del botón que debe recibir el foco tras el próximo render
+var lastKey = null, lastRect = null;
+function setKb(on){ kb = on; document.documentElement.classList.toggle("kb", on); }
+
+var lastFire = 0;
+function fire(fn){
+  var t = Date.now();
+  if (t - lastFire < 280) return;
+  lastFire = t;
+  try { if (navigator.vibrate) navigator.vibrate(20); } catch(_){}
+  wake();
+  fn();
+}
+// key: identificador estable para recuperar el foco después de redibujar.
+function btn(content, className, fn, aria, disabled, key){
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = (className || "") + (disabled ? " off" : "");
+  if (typeof content === "string") b.textContent = content; else b.appendChild(content);
+  if (aria) b.setAttribute("aria-label", aria);
+  if (key) b.setAttribute("data-k", key);
+  b.tabIndex = -1;                       // no usamos el orden de tabulación
+  b._fn = disabled ? null : fn;          // deshabilitado = sigue pudiendo tener foco, pero no hace nada
+  if (disabled) b.setAttribute("aria-disabled", "true");
+  b.addEventListener("pointerdown", function(e){
+    setKb(false);
+    e.preventDefault();
+    if (!b._fn) return;
+    b.classList.add("pressed");
+    try { b.setPointerCapture(e.pointerId); } catch(_){}
+  });
+  b.addEventListener("pointerup", function(e){
+    b.classList.remove("pressed"); e.preventDefault();
+    if (b._fn) fire(b._fn);
+  });
+  b.addEventListener("pointercancel", function(){ b.classList.remove("pressed"); });
+  b.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  return b;
+}
+function icon(path){
+  var ns = "http://www.w3.org/2000/svg";
+  var s = document.createElementNS(ns, "svg");
+  s.setAttribute("viewBox","0 0 24 24");
+  s.setAttribute("fill","none"); s.setAttribute("stroke","currentColor"); s.setAttribute("stroke-width","2");
+  s.setAttribute("stroke-linecap","round"); s.setAttribute("stroke-linejoin","round");
+  s.innerHTML = path;
+  return s;
+}
+function labeled(path, txt){
+  var c = document.createElement("span"); c.className = "lab";
+  c.appendChild(icon(path));
+  var t = document.createElement("span"); t.textContent = txt; c.appendChild(t);
+  return c;
+}
+var IC_BACK = '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/>';
+var IC_SPACE = '<path d="M3 9v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9"/>';
+var IC_MORE = '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>';
+var IC_TRASH = '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/>';
+var IC_SPEAK = '<path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>';
+
+// ---------- Navegación espacial con el control remoto ----------
+function ovOpen(){ return $("ov").classList.contains("on"); }
+function focusables(){
+  var root = ovOpen() ? $("ov") : $("app");
+  return Array.prototype.filter.call(root.querySelectorAll("button, .nav"), function(b){
+    if (b.classList.contains("blank")) return false;
+    var r = b.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  });
+}
+function byKey(k){
+  if (!k) return null;
+  var l = focusables();
+  for (var i = 0; i < l.length; i++) if (l[i].getAttribute("data-k") === k) return l[i];
+  return null;
+}
+function current(){
+  var a = document.activeElement;
+  return (a && a !== document.body && focusables().indexOf(a) >= 0) ? a : null;
+}
+// Rectángulo sin la escala del foco, para que agrandar el botón no altere la geometría.
+function rectOf(b){
+  var r = b.getBoundingClientRect(), s = 1;
+  try {
+    var tf = getComputedStyle(b).transform;
+    if (tf && tf !== "none") s = new DOMMatrix(tf).a || 1;
+  } catch(_){}
+  if (s === 1) return {left:r.left, right:r.right, top:r.top, bottom:r.bottom};
+  var cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2, hw = r.width / s / 2, hh = r.height / s / 2;
+  return {left:cx-hw, right:cx+hw, top:cy-hh, bottom:cy+hh};
+}
+function focusEl(b){
+  if (!b) return;
+  try { b.focus({preventScroll: true}); } catch(_){ b.focus(); }
+  lastKey = b.getAttribute("data-k"); lastRect = rectOf(b);
+}
+function defaultFocus(){
+  if (ovOpen()) return byKey("ov-0") || focusables()[0];
+  return byKey("pred-0") || byKey("let-0") || byKey("main-0") || focusables()[0];
+}
+function nearestTo(r){
+  var cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2, best = null, bd = Infinity;
+  focusables().forEach(function(b){
+    var q = rectOf(b), dx = (q.left + q.right) / 2 - cx, dy = (q.top + q.bottom) / 2 - cy, d = dx*dx + dy*dy;
+    if (d < bd){ bd = d; best = b; }
+  });
+  return best;
+}
+// Puntaje de un candidato b desde a en una dirección (menor = mejor; Infinity = no está en esa dirección).
+function score(a, b, dir){
+  var acx = (a.left + a.right) / 2, acy = (a.top + a.bottom) / 2;
+  var bcx = (b.left + b.right) / 2, bcy = (b.top + b.bottom) / 2;
+  var gap, orth, off;
+  if (dir === "right" || dir === "left"){
+    if (dir === "right"){ if (bcx <= acx + 1 || b.right <= a.right + 1) return Infinity; gap = b.left - a.right; }
+    else { if (bcx >= acx - 1 || b.left >= a.left - 1) return Infinity; gap = a.left - b.right; }
+    orth = Math.max(0, Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom));
+    off = Math.abs(bcy - acy);
+  } else {
+    if (dir === "down"){ if (bcy <= acy + 1 || b.bottom <= a.bottom + 1) return Infinity; gap = b.top - a.bottom; }
+    else { if (bcy >= acy - 1 || b.top >= a.top - 1) return Infinity; gap = a.top - b.bottom; }
+    orth = Math.max(0, Math.max(a.left, b.left) - Math.min(a.right, b.right));
+    off = Math.abs(bcx - acx);
+  }
+  // Primero los que están alineados (se superponen en el otro eje); si no hay, los demás.
+  return (orth > 0 ? 100000 : 0) + Math.max(0, gap) + orth * 2 + off * 0.3;
+}
+function bump(b){
+  if (!b) return;
+  b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+  setTimeout(function(){ b.classList.remove("bump"); }, 200);
+}
+function move(dir){
+  var cur = current();
+  if (!cur){ focusEl((lastRect && nearestTo(lastRect)) || defaultFocus()); return; }
+  var a = rectOf(cur), best = null, bs = Infinity;
+  focusables().forEach(function(b){
+    if (b === cur) return;
+    var s = score(a, rectOf(b), dir);
+    if (s < bs){ bs = s; best = b; }
+  });
+  if (best) focusEl(best); else bump(cur);
+}
+function restoreFocus(oldKey, oldRect){
+  var t = wantFocus ? (byKey(wantFocus) || defaultFocus())
+    : (byKey(oldKey) || (oldRect && nearestTo(oldRect)) || defaultFocus());
+  wantFocus = null;
+  focusEl(t);
+}
+
+// ---------- Teclas: control remoto (desde Android) y teclado del navegador ----------
+var lastMove = 0, lastOk = 0, lastBack = 0;
+var MOVE_MS = 250, OK_MS = 400;
+function onKey(k, repeat){
+  var now = Date.now();
+  wake();
+  if (k === "up" || k === "down" || k === "left" || k === "right"){
+    if (now - lastMove < MOVE_MS) return;
+    lastMove = now;
+    if (!kb){ setKb(true); if (!current()) focusEl(defaultFocus()); return; }
+    move(k);
+  } else if (k === "ok"){
+    if (repeat || now - lastOk < OK_MS) return;   // rebote: ignorar un segundo OK muy seguido
+    lastOk = now;
+    setKb(true);
+    var c = current();
+    if (!c){ focusEl(defaultFocus()); return; }
+    if (!c._fn){ bump(c); return; }
+    lastFire = 0;
+    fire(c._fn);
+  } else if (k === "back"){
+    if (repeat || now - lastBack < OK_MS) return;
+    lastBack = now;
+    if (ovOpen()) closeBig(); else undo();
+  }
+}
+window.onRemoteKey = function(k, repeat){ onKey(String(k), !!repeat); return true; };
+
+var KEYMAP = {ArrowUp:"up", ArrowDown:"down", ArrowLeft:"left", ArrowRight:"right",
+  Enter:"ok", NumpadEnter:"ok", " ":"ok", Backspace:"back", BrowserBack:"back", GoBack:"back"};
+document.addEventListener("keydown", function(e){
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  var k = KEYMAP[e.key];
+  if (e.key === "Escape"){ e.preventDefault(); if (ovOpen()) closeBig(); return; }
+  if (e.key === "Tab"){ e.preventDefault(); return; }
+  if (!k) return;
+  e.preventDefault();
+  onKey(k, e.repeat);
+});
+document.addEventListener("keyup", function(e){ if (KEYMAP[e.key]) e.preventDefault(); });
+document.addEventListener("pointerdown", function(){ setKb(false); }, true);
+
+// ---------- Render ----------
+function renderMsg(){
+  var m = $("msg"); m.innerHTML = "";
+  if (!text && !word){
+    var e = document.createElement("span"); e.className = "empty";
+    e.textContent = "Elegí una palabra o empezá a escribir";
+    m.appendChild(e);
+  } else {
+    m.appendChild(document.createTextNode(text));
+    if (word){ var c = document.createElement("span"); c.className = "cur"; c.textContent = word; m.appendChild(c); }
+  }
+  m.scrollTop = m.scrollHeight;
+  // El recuadro del mensaje también recibe foco: OK = hablar. (No se activa al tocarlo, para poder desplazarlo.)
+  var box = $("msgbox");
+  box._fn = (text || word) ? speakMsg : null;
+  box.classList.toggle("off-msg", !box._fn);
+}
+function renderTop(){
+  var t = $("topbtns"); t.innerHTML = "";
+  var empty = !text && !word, armed = !!armedTimer;
+  t.appendChild(btn(labeled(IC_SPEAK, "HABLAR"), "tb speak", speakMsg, "Hablar: leer el mensaje en voz alta", empty, "speak"));
+  t.appendChild(btn(labeled(IC_BACK, "BORRAR"), "tb del", undo, "Borrar lo último", empty && !hist.length, "del"));
+  t.appendChild(btn(labeled(IC_TRASH, armed ? "¿SEGURO?" : "TODO"), "tb trash" + (armed ? " armed" : ""), clearAll,
+    armed ? "Tocá de nuevo para borrar todo" : "Borrar todo", empty, "trash"));
+}
+function renderPreds(){
+  var p = $("preds"); p.innerHTML = "";
+  var list = (screen === "num" || screen === "phr" || screen === "words") ? [] : suggest(norm(word), lastPrev());
+  for (var i = 0; i < 3; i++){
+    (function(d, i){
+      if (d) p.appendChild(btn(d, "pred", function(){ pick(d); }, "Palabra " + d, false, "pred-" + i));
+      else { var b = document.createElement("button"); b.className = "pred blank"; b.tabIndex = -1; p.appendChild(b); }
+    })(list[i], i);
+  }
+}
+function goScreen(s, focusKey){ screen = s; page = 0; wantFocus = focusKey; render(); }
+function renderMain(){
+  var main = $("main"); main.innerHTML = "";
+  var prev = lastPrev();
+  function grid(cols){ var g = document.createElement("div"); g.className = "grid " + cols; main.appendChild(g); return g; }
+  function volver(){ main.appendChild(btn("← Volver", "strip", function(){ goScreen("main", "let-0"); }, "Volver a las letras", false, "volver")); }
+
+  if (screen === "phr"){
+    volver();
+    var gp = grid("g3");
+    FRASES.forEach(function(f, i){ gp.appendChild(btn(f, "phrase", function(){ insertText(f); }, null, false, "main-" + i)); });
+    return;
+  }
+  if (screen === "words"){
+    volver();
+    var gw = grid("g4");
+    SHORTCUTS.forEach(function(w, i){ gw.appendChild(btn(w, "short", function(){ insertText(w); }, null, false, "main-" + i)); });
+    return;
+  }
+  if (screen === "num"){
+    var g3 = grid("g3 numgrid");
+    ["1","2","3","4","5","6","7","8","9",".","0","000"].forEach(function(d, i){
+      g3.appendChild(btn(d, "numk", function(){ snap(); word += d; render(); }, "Número " + d, false, "main-" + i));
+    });
+    var abc = btn("ABC", "abc", function(){ if (word){ snap(); commitWord(); } goScreen("main", "let-0"); }, "Volver a las letras", false, "abc");
+    abc.style.gridColumn = "span 2";
+    g3.appendChild(abc);
+    g3.appendChild(btn(labeled(IC_SPACE, "ESPACIO"), "enter", space, "Espacio: terminar el número", !word, "nspace"));
+    return;
+  }
+
+  // Pantalla principal
+  var wrap = document.createElement("div"); wrap.className = "ringwrap";
+  var ring = document.createElement("div"); ring.className = "ring";
+  wrap.appendChild(ring); main.appendChild(wrap);
+
+  var rk = ranked(ALL, norm(word), prev);
+  var first = !word;            // primera letra: 9 en grilla; después: 5 en círculo
+  var per = first ? 9 : 5;
+  var pages = Math.ceil(rk.length / per);
+  if (page >= pages) page = 0;
+  var letters = rk.slice(page*per, page*per+per);
+  function letter(l, cls, i){
+    var isV = VOWELS.indexOf(l) >= 0;
+    return btn(l.toUpperCase(), cls + " " + (isV ? "vowel" : "cons"), function(){
+      snap(); word += l; page = 0; screen = "main";
+      wantFocus = "let-0";        // el foco va a la letra más probable
+      render();
+    }, "Letra " + l, false, "let-" + i);
+  }
+  if (first){
+    var GW = 78, gap = 2, cw = (GW - 2*gap)/3, ch = (100 - 2*gap)/3;
+    letters.forEach(function(l, i){
+      var b = letter(l, "rg", i);
+      b.style.width = cw + "%"; b.style.height = ch + "%";
+      b.style.left = ((i % 3) * (cw + gap)) + "%";
+      b.style.top = (Math.floor(i / 3) * (ch + gap)) + "%";
+      ring.appendChild(b);
+    });
+  } else {
+    var R = 28, S = 27, CX = 42;
+    var ang = [252, 324, 36, 108, 180];
+    letters.forEach(function(l, i){
+      var t = ang[i] * Math.PI / 180;
+      var b = letter(l, "rl", i);
+      b.style.width = S + "%"; b.style.height = S + "%";
+      b.style.left = (CX + R*Math.cos(t) - S/2) + "%";
+      b.style.top = (50 + R*Math.sin(t) - S/2) + "%";
+      ring.appendChild(b);
+    });
+  }
+  // Columna fija a la derecha: MÁS, 123, ESPACIO
+  ring.appendChild(btn(labeled(IC_MORE, "MÁS"), "rmore", function(){ page = (page+1) % pages; render(); }, "Más letras", false, "more"));
+  ring.appendChild(btn("123", "rc", function(){
+    if (word && !isNum(word)){ snap(); commitWord(); }
+    goScreen("num", "main-0");
+  }, "Números", false, "num"));
+  ring.appendChild(btn(labeled(IC_SPACE, "ESPACIO"), "renter enter", space, "Espacio: terminar la palabra", !word, "space"));
+}
+function renderBar(){
+  var bar = $("bar"); bar.innerHTML = "";
+  bar.appendChild(btn("Frases", screen === "phr" ? "on" : "", function(){
+    if (screen === "phr") goScreen("main", "let-0"); else goScreen("phr", "main-0");
+  }, null, false, "bar-phr"));
+  bar.appendChild(btn("Palabras", screen === "words" ? "on" : "", function(){
+    if (screen === "words") goScreen("main", "let-0"); else goScreen("words", "main-0");
+  }, null, false, "bar-words"));
+  bar.appendChild(btn("Mostrar", "", showBig, "Mostrar el mensaje en grande", !text && !word, "bar-show"));
+}
+function renderCur(){
+  var c = $("cur");
+  if (word){ c.className = "curword"; c.textContent = word.toUpperCase(); }
+  else { c.className = "curword idle"; c.textContent = "—"; }
+}
+function render(){
+  var cur = current();
+  var oldKey = cur ? cur.getAttribute("data-k") : lastKey;
+  var oldRect = cur ? rectOf(cur) : lastRect;
+  renderMsg(); renderTop(); renderCur(); renderPreds(); renderMain(); renderBar();
+  if (!ovOpen()) restoreFocus(oldKey, oldRect);
+}
+
+// ---------- Acciones ----------
+function commitWord(){
+  if (!word) return;
+  if (isNum(word)){ text += word + " "; }
+  else {
+    var n = norm(word);
+    var d = vocab[n] ? vocab[n].d : word;
+    learn(n, d);
+    text += d + " ";
+  }
+  word = ""; page = 0;
+}
+function pick(display){
+  snap();
+  var n = norm(display);
+  learn(n, display);
+  text += display + " ";
+  word = ""; page = 0; screen = "main"; render();
+}
+function insertText(str){
+  snap();
+  commitWord();
+  str.split(" ").forEach(function(w){ var n = norm(w); learn(n, w); text += w + " "; });
+  page = 0; screen = "main"; wantFocus = "pred-0"; render();
+}
+function space(){
+  if (!word) return;
+  snap();
+  var wasNum = screen === "num";
+  commitWord(); screen = "main";
+  if (wasNum) wantFocus = "let-0";
+  render();
+}
+// BORRAR (botón en pantalla y tecla Atrás): quita lo último que se agregó:
+// una letra, una palabra predicha, una frase entera, o deshace "Borrar todo".
+function undo(){
+  disarm();
+  if (hist.length){
+    var s = hist.pop(); text = s.t; word = s.w;
+  } else if (word){
+    word = word.slice(0, -1);
+  } else if (text){
+    var t = text.replace(/\s+$/, ""), i = t.lastIndexOf(" ");
+    text = i >= 0 ? t.slice(0, i + 1) : "";
+  } else { bump(current()); return; }
+  page = 0;
+  if (word && isNum(word)) screen = "num";
+  else if (screen === "num" && word) screen = "main";
+  render();
+}
+function disarm(){ if (armedTimer){ clearTimeout(armedTimer); armedTimer = null; } }
+function clearAll(){
+  if (armedTimer){
+    disarm();
+    snap();                     // se puede recuperar con BORRAR / Atrás
+    text = ""; word = ""; page = 0; screen = "main"; render();
+  } else {
+    armedTimer = setTimeout(function(){ armedTimer = null; render(); }, 3000);
+    render();
+  }
+}
+function fullMsg(){ return (text + word).trim(); }
+
+// ---------- Mostrar en grande ----------
+function showBig(){
+  $("ovText").textContent = fullMsg();
+  var ob = $("ovBar"); ob.innerHTML = "";
+  ob.appendChild(btn("Leer en voz alta", "speak", speakMsg, null, false, "ov-0"));
+  ob.appendChild(btn("Volver", "", closeBig, null, false, "ov-1"));
+  $("ov").classList.add("on");
+  focusEl(byKey("ov-0"));
+}
+function closeBig(){
+  $("ov").classList.remove("on");
+  focusEl(byKey("bar-show") || defaultFocus());
+}
+
+// ---------- Voz ----------
+var toastTimer = null;
+function toast(msg){
+  var t = $("toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove("on"); }, 6000);
+}
+function noVoice(){
+  toast("No hay voz disponible en este dispositivo. Revisá que esté instalado un motor de texto a voz en español.");
+}
+function speakMsg(){ speakText(fullMsg()); }
+function speakText(t){
+  if (!t) return;
+  // 1) App de Android TV: puente nativo a TextToSpeech
+  var A = window.AndroidTTS;
+  if (A && typeof A.speak === "function"){
+    try { if (A.speak(t) === false) noVoice(); return; } catch(e){}
+  }
+  // 2) Navegador: Web Speech API
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined"){ noVoice(); return; }
+  try {
+    window.speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(t);
+    u.lang = "es-AR"; u.rate = 0.9;
+    var vs = window.speechSynthesis.getVoices().filter(function(v){ return /^es/i.test(v.lang); });
+    var ar = vs.filter(function(v){ return /AR/i.test(v.lang); });
+    var es = vs.filter(function(v){ return /ES/.test(v.lang); });
+    if (ar.length) u.voice = ar[0]; else if (es.length) u.voice = es[0]; else if (vs.length) u.voice = vs[0];
+    u.onerror = function(ev){ if (ev && ev.error && ev.error !== "canceled" && ev.error !== "interrupted") noVoice(); };
+    window.speechSynthesis.speak(u);
+  } catch(e){ noVoice(); }
+}
+function stopVoice(){
+  try { if (window.AndroidTTS && window.AndroidTTS.stop) window.AndroidTTS.stop(); } catch(_){}
+  try { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); } catch(_){}
+}
+
+// ---------- Pantalla siempre encendida (navegador; en el APK lo hace Android) ----------
+var lock = null;
+function wake(){
+  try {
+    if (!lock && navigator.wakeLock && document.visibilityState === "visible"){
+      navigator.wakeLock.request("screen").then(function(l){
+        lock = l; l.addEventListener("release", function(){ lock = null; });
+      }).catch(function(){});
+    }
+  } catch(e){}
+}
+document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") wake(); });
+
+// Para pruebas automáticas
+window.__comunicador = { state: function(){ return {text: text, word: word, screen: screen, hist: hist.length}; },
+  focusables: focusables, stopVoice: stopVoice };
+
+setKb(true);
+render();
+focusEl(defaultFocus());   // arranque predecible: primera predicción (o primera letra)
+wake();
+})();
+</script>
+</body>
+</html>
