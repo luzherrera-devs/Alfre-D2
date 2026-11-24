@@ -1,0 +1,26 @@
+name: Prueba de regresión
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  regresion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar Playwright + Chromium
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - name: Correr la prueba
+        run: node tests/regresion.js capturas
+      - name: Subir capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-regresion
+          path: capturas/

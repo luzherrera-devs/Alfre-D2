@@ -1,0 +1,52 @@
+name: Problema (bug)
+description: Algo que no funciona o se ve mal
+labels: ["bug"]
+body:
+  - type: textarea
+    id: hice
+    attributes:
+      label: Qué hiciste
+      placeholder: "Ej.: abrí index.html en el celu, en vertical"
+    validations:
+      required: true
+  - type: textarea
+    id: paso
+    attributes:
+      label: Qué pasó
+      description: Si podés, pegá una captura de pantalla (se puede arrastrar o pegar acá).
+    validations:
+      required: true
+  - type: textarea
+    id: esperaba
+    attributes:
+      label: Qué esperabas
+    validations:
+      required: true
+  - type: dropdown
+    id: dispositivo
+    attributes:
+      label: Dispositivo
+      multiple: true
+      options: ["Tele (stick Android TV)", "Celular", "Tablet", "Compu (navegador)"]
+    validations:
+      required: true
+  - type: dropdown
+    id: manejo
+    attributes:
+      label: Cómo lo manejabas
+      multiple: true
+      options: ["Control remoto", "Toque", "Mouse", "Teclado"]
+  - type: dropdown
+    id: urgencia
+    attributes:
+      label: ¿Le traba el uso al paciente?
+      options: ["No, es una molestia", "Sí, es urgente"]
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: Definición de terminado
+      description: Se cierra solo si cumple [DEFINITION_OF_DONE.md](../blob/main/DEFINITION_OF_DONE.md).
+      options:
+        - label: "No rompe nada de lo que ya funcionaba (salvo cambio pedido explícitamente en este issue)"
+        - label: "Pasa la prueba de regresión y el APK compila"
+        - label: "Probado en el dispositivo real"

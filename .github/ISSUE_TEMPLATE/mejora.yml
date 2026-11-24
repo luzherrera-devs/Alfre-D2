@@ -1,0 +1,40 @@
+name: Mejora (historia)
+description: Algo nuevo o un cambio de comportamiento
+labels: ["mejora"]
+body:
+  - type: textarea
+    id: historia
+    attributes:
+      label: Qué querés lograr
+      placeholder: "Como paciente, quiero ... para ..."
+    validations:
+      required: true
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Cómo sabemos que está bien (criterios de aceptación)
+      placeholder: "- ...\n- ..."
+  - type: textarea
+    id: cambios
+    attributes:
+      label: ¿Cambia algo que ya funciona?
+      description: "Por la definición de terminado, NO se puede cambiar el comportamiento existente salvo que lo digas acá explícitamente."
+      placeholder: "No / Sí: ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: dispositivo
+    attributes:
+      label: Dónde aplica
+      multiple: true
+      options: ["Tele (stick Android TV)", "Celular", "Tablet", "Compu (navegador)"]
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: Definición de terminado
+      description: Se cierra solo si cumple [DEFINITION_OF_DONE.md](../blob/main/DEFINITION_OF_DONE.md).
+      options:
+        - label: "No rompe nada de lo que ya funcionaba (salvo lo indicado arriba)"
+        - label: "Pasa la prueba de regresión (ampliada si hace falta) y el APK compila"
+        - label: "README actualizado si cambia el uso"
+        - label: "Probado en el dispositivo real"
