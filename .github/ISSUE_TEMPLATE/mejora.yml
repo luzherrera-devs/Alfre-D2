@@ -32,7 +32,7 @@ body:
     id: dod
     attributes:
       label: Definición de terminado
-      description: Se cierra solo si cumple [DEFINITION_OF_DONE.md](../blob/main/DEFINITION_OF_DONE.md).
+      description: Se cierra solo si cumple el archivo DEFINITION_OF_DONE.md del repo.
       options:
         - label: "No rompe nada de lo que ya funcionaba (salvo lo indicado arriba)"
         - label: "Pasa la prueba de regresión (ampliada si hace falta) y el APK compila"
