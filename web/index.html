@@ -162,6 +162,40 @@ svg{display:block}
   .toast{font-size:2.4vh;bottom:10vh;max-width:92vw}
   :root{--r:1.4vh}
 }
+
+/* ===== Plataforma: celular en HORIZONTAL (issue #3) =====
+   Solo pantallas horizontales bajas y muy anchas (más que 17:9). La tele (16:9) y la tablet no entran acá.
+   Letras a la derecha con todo el alto; a la izquierda: mensaje, botones, predicciones y barra. */
+@media (orientation: landscape) and (max-height: 500px) and (min-aspect-ratio: 17/9){
+  .app{top:3vh;bottom:3vh;left:max(3vw, env(safe-area-inset-left));right:max(3vw, env(safe-area-inset-right));
+    gap:2.5vh 2vw;grid-template-columns:minmax(0,1fr) 94vh;
+    grid-template-rows:1.35fr 1fr 1fr .85fr;
+    grid-template-areas:"msg main" "btns main" "preds main" "bar main"}
+  .app[data-screen="phr"],.app[data-screen="words"],.app[data-screen="num"]{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);
+    grid-template-rows:1.6fr 1fr .85fr;grid-template-areas:"msg main" "btns main" "bar main"}
+  .preds.other{display:none}   /* sin predicciones en esas pantallas: no dejar el hueco */
+  .top,.mid,.left{display:contents}
+  .msg{grid-area:msg;border-width:.6vh;padding:1.5vh 1.5vw}
+  .msg-text{font-size:8.5vh}
+  .topbtns{grid-area:btns;grid-template-columns:repeat(3,1fr);gap:1.5vw}
+  .tb{flex-direction:row;gap:1vw;font-size:5.5vh}
+  .tb svg{width:8vh;height:8vh}
+  .curword{display:none}
+  .preds{grid-area:preds;grid-template-rows:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.5vw}
+  .pred{font-size:7.5vh;border-width:.6vh;padding:0 1vw}
+  .main{grid-area:main;gap:2.5vh}
+  .bar{grid-area:bar;gap:1.5vw}
+  .bar button{font-size:6.5vh}
+  .strip{height:15vh;font-size:7vh}
+  .grid{gap:2vh}
+  .phrase,.short{font-size:5.6vh;border-width:.6vh}
+  .numk{font-size:10vh}
+  .abc{font-size:8vh}
+  .lab{font-size:5.5vh}
+  .lab svg{width:8vh;height:8vh}
+  .toast{font-size:6vh}
+  :root{--r:2.5vh}
+}
 </style>
 </head>
 <body>
@@ -659,6 +693,7 @@ function renderCur(){
   else { c.className = "curword idle"; c.textContent = "—"; }
 }
 function render(){
+  $("app").setAttribute("data-screen", screen);   // solo lo usa el diseño de celular en horizontal
   var cur = current();
   var oldKey = cur ? cur.getAttribute("data-k") : lastKey;
   var oldRect = cur ? rectOf(cur) : lastRect;

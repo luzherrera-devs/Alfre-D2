@@ -211,11 +211,107 @@ function check(cond, msg) { console.log((cond ? '  ok   ' : '  FALLA ') + msg); 
     // Girar el celular: pasa a la disposición horizontal sin perder el mensaje, y vuelve.
     const msg = await vstate();
     await pv.setViewportSize({ width: h, height: w }); await pv.waitForTimeout(200);
-    check(await pv.evaluate(() => getComputedStyle(document.querySelector('.top')).gridTemplateColumns.split(' ').length === 2),
+    // Ajustada por el issue #3 (cambio pedido explícitamente): en un celular, el horizontal ahora puede ser
+    // el diseño de tele o el de celular en horizontal; lo que importa es que deje el diseño vertical.
+    check(await pv.evaluate(() => getComputedStyle(document.querySelector('.top')).gridTemplateColumns.split(' ').length !== 1),
       'al girar a horizontal usa la disposición horizontal');
     await pv.setViewportSize({ width: w, height: h }); await pv.waitForTimeout(200);
     const after = await vstate();
     check(after.text === msg.text && after.word === msg.word, 'al girar no se pierde el mensaje');
+    await ctx.close();
+  }
+
+  // ===== Plataforma: celular en horizontal (issue #3) =====
+  // Sección nueva: no modifica las verificaciones anteriores.
+  const isPhoneLandscape = pg => pg.evaluate(() => getComputedStyle(document.getElementById('cur')).display === 'none'
+    && getComputedStyle(document.querySelector('.top')).display === 'contents');
+  console.log('Tele: no usa el diseño de celular en horizontal');
+  for (const [w, h] of [[960, 540], [1280, 720], [1920, 1080], [640, 360]]) {
+    const pt = await browser.newPage({ viewport: { width: w, height: h } });
+    await pt.goto(APP);
+    check(!(await isPhoneLandscape(pt)), `tele ${w}×${h} (16:9) mantiene su diseño`);
+    await pt.close();
+  }
+  for (const [w, h, name] of [[844, 390, 'celular'], [915, 412, 'celular grande'], [760, 300, 'celular con barras del navegador']]) {
+    console.log(`Horizontal: ${name} ${w}×${h}`);
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: true });
+    const ph = await ctx.newPage();
+    ph.on('pageerror', e => errors.push(e.message));
+    await ph.goto(APP);
+    const hstate = () => ph.evaluate(() => window.__comunicador.state());
+    const hfocused = () => ph.evaluate(() => document.activeElement && document.activeElement.dataset.k);
+    const hfocus = k => ph.evaluate(k => [...document.querySelectorAll('button,.nav')].find(x => x.dataset.k === k && x.getBoundingClientRect().width > 0).focus(), k);
+    const htap = async k => { await ph.tap(`[data-k="${k}"]`); await ph.waitForTimeout(350); };
+    async function hLayoutOk(label) {
+      const r = await ph.evaluate(() => {
+        const vw = innerWidth, vh = innerHeight;
+        const bs = window.__comunicador.focusables().map(b => {
+          const q = b.getBoundingClientRect(), s = b === document.activeElement ? 1.07 : 1;
+          const cx = (q.left + q.right) / 2, cy = (q.top + q.bottom) / 2, hw = q.width / s / 2, hh = q.height / s / 2;
+          return { k: b.dataset.k, l: cx - hw, r: cx + hw, t: cy - hh, b: cy + hh, round: b.classList.contains('rl'), cx, cy, rad: hw };
+        });
+        const out = bs.filter(q => q.l < -1 || q.t < -1 || q.r > vw + 1 || q.b > vh + 1).map(q => q.k);
+        const over = [];
+        for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+          const a = bs[i], b = bs[j];
+          const ix = Math.min(a.r, b.r) - Math.max(a.l, b.l), iy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
+          const hit = (a.round && b.round) ? Math.hypot(a.cx - b.cx, a.cy - b.cy) < a.rad + b.rad - 2 : ix > 2 && iy > 2;
+          if (hit) over.push(a.k + '/' + b.k);
+        }
+        const scroll = document.documentElement.scrollWidth > vw || document.documentElement.scrollHeight > vh;
+        return { out, over, scroll };
+      });
+      check(!r.scroll && r.out.length === 0, `${label}: todo entra en la pantalla` + (r.out.length ? ` (afuera: ${r.out})` : ''));
+      check(r.over.length === 0, `${label}: ningún botón encimado` + (r.over.length ? ` (${r.over})` : ''));
+    }
+    async function hReachable(label) {
+      const all = await ph.evaluate(() => window.__comunicador.focusables().map(b => b.dataset.k));
+      const start = all[0], seen = new Set([start]), queue = [start];
+      while (queue.length) {
+        const k = queue.shift();
+        for (const d of ['up', 'down', 'left', 'right']) {
+          await hfocus(k); await ph.evaluate(d => window.onRemoteKey(d), d); await ph.waitForTimeout(255);
+          const n = await hfocused(); if (n && !seen.has(n)) { seen.add(n); queue.push(n); }
+        }
+      }
+      const missing = all.filter(k => !seen.has(k));
+      check(missing.length === 0, `${label}: se llega con flechas a todos los botones` + (missing.length ? ` (faltan: ${missing})` : ''));
+    }
+    const fullCheck = name === 'celular';
+
+    check(await isPhoneLandscape(ph), 'usa el diseño de celular en horizontal');
+    await hLayoutOk('letras (grilla)');
+    if (fullCheck) await hReachable('letras (grilla)');
+    const ringPx = await ph.evaluate(() => document.querySelector('.ring').getBoundingClientRect().height);
+    check(ringPx >= h * 0.85, `las letras usan casi todo el alto (${Math.round(ringPx)}px de ${h}px)`);
+    if (SHOTS) await ph.screenshot({ path: path.join(SHOTS, `h-${w}x${h}-1.png`) });
+    await htap('let-0');
+    check((await hstate()).word.length === 1, 'tocar una letra la agrega');
+    await hLayoutOk('letras (círculo)');
+    if (fullCheck) await hReachable('letras (círculo)');
+    if (fullCheck) {
+      // BORRAR queda a un paso de las letras (a la izquierda del círculo).
+      await hfocus('let-4'); await ph.evaluate(() => window.onRemoteKey('left')); await ph.waitForTimeout(255);
+      const fromLetters = await hfocused();
+      check(!/^let-|^more$|^num$|^space$/.test(fromLetters), `desde las letras, una flecha a la izquierda sale a la columna de botones (${fromLetters})`);
+    }
+    await htap('pred-0');
+    check((await hstate()).word === '' && (await hstate()).text.length > 0, 'tocar una predicción la agrega');
+    await htap('del');
+    check((await hstate()).text === '', 'tocar BORRAR quita la palabra');
+    await htap('bar-phr'); await hLayoutOk('frases'); if (fullCheck) await hReachable('frases');
+    if (SHOTS) await ph.screenshot({ path: path.join(SHOTS, `h-${w}x${h}-3.png`) });
+    await htap('bar-words'); await hLayoutOk('palabras'); if (fullCheck) await hReachable('palabras');
+    await htap('volver'); await htap('num'); await hLayoutOk('números'); if (fullCheck) await hReachable('números');
+    await htap('main-0');
+    await htap('bar-show'); await hLayoutOk('mensaje en grande');
+    await htap('ov-1');
+    const msg = await hstate();
+    await ph.setViewportSize({ width: h, height: w }); await ph.waitForTimeout(200);
+    check(!(await isPhoneLandscape(ph)), 'al girar a vertical usa el diseño vertical');
+    await ph.setViewportSize({ width: w, height: h }); await ph.waitForTimeout(200);
+    const after = await hstate();
+    check(after.text === msg.text && after.word === msg.word && await isPhoneLandscape(ph), 'al girar y volver no se pierde el mensaje');
     await ctx.close();
   }
 
