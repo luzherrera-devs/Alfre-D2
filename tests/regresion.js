@@ -134,6 +134,91 @@ function check(cond, msg) { console.log((cond ? '  ok   ' : '  FALLA ') + msg); 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight);
   check(!overflow, 'en 1920×1080 no hay desbordes ni barras de desplazamiento');
 
+  // ===== Plataforma: celular / tablet en vertical (issue #1) =====
+  // Sección nueva: no modifica las verificaciones anteriores.
+  for (const [w, h, name] of [[390, 844, 'celular'], [360, 640, 'celular chico'], [800, 1280, 'tablet']]) {
+    console.log(`Vertical: ${name} ${w}×${h}`);
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
+    const pv = await ctx.newPage();
+    pv.on('pageerror', e => errors.push(e.message));
+    await pv.goto(APP);
+    const vstate = () => pv.evaluate(() => window.__comunicador.state());
+    const vfocused = () => pv.evaluate(() => document.activeElement && document.activeElement.dataset.k);
+    const vfocus = k => pv.evaluate(k => [...document.querySelectorAll('button,.nav')].find(x => x.dataset.k === k && x.getBoundingClientRect().width > 0).focus(), k);
+    const vtap = async k => { await pv.tap(`[data-k="${k}"]`); await pv.waitForTimeout(350); };
+    // Todo dentro de la pantalla y sin botones encimados.
+    async function layoutOk(label) {
+      const r = await pv.evaluate(() => {
+        const vw = innerWidth, vh = innerHeight;
+        const bs = window.__comunicador.focusables().map(b => {
+          const q = b.getBoundingClientRect(), s = b === document.activeElement ? 1.07 : 1;
+          const cx = (q.left + q.right) / 2, cy = (q.top + q.bottom) / 2, hw = q.width / s / 2, hh = q.height / s / 2;
+          return { k: b.dataset.k, l: cx - hw, r: cx + hw, t: cy - hh, b: cy + hh, round: b.classList.contains('rl'), cx, cy, rad: hw };
+        });
+        const out = bs.filter(q => q.l < -1 || q.t < -1 || q.r > vw + 1 || q.b > vh + 1).map(q => q.k);
+        const over = [];
+        for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+          const a = bs[i], b = bs[j];
+          const ix = Math.min(a.r, b.r) - Math.max(a.l, b.l), iy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
+          const hit = (a.round && b.round)   // letras redondas del círculo: se mide como círculo
+            ? Math.hypot(a.cx - b.cx, a.cy - b.cy) < a.rad + b.rad - 2
+            : ix > 2 && iy > 2;
+          if (hit) over.push(a.k + '/' + b.k);
+        }
+        const scroll = document.documentElement.scrollWidth > vw || document.documentElement.scrollHeight > vh;
+        return { out, over, scroll };
+      });
+      check(!r.scroll && r.out.length === 0, `${label}: todo entra en la pantalla` + (r.out.length ? ` (afuera: ${r.out})` : ''));
+      check(r.over.length === 0, `${label}: ningún botón encimado` + (r.over.length ? ` (${r.over})` : ''));
+    }
+    async function vReachable(label) {
+      const all = await pv.evaluate(() => window.__comunicador.focusables().map(b => b.dataset.k));
+      const start = all[0], seen = new Set([start]), queue = [start];
+      while (queue.length) {
+        const k = queue.shift();
+        for (const d of ['up', 'down', 'left', 'right']) {
+          await vfocus(k); await pv.evaluate(d => window.onRemoteKey(d), d); await pv.waitForTimeout(255);
+          const n = await vfocused(); if (n && !seen.has(n)) { seen.add(n); queue.push(n); }
+        }
+      }
+      const missing = all.filter(k => !seen.has(k));
+      check(missing.length === 0, `${label}: se llega con flechas a todos los botones` + (missing.length ? ` (faltan: ${missing})` : ''));
+    }
+    const fullCheck = name === 'celular';   // el recorrido con flechas completo, solo en un tamaño (es lento)
+
+    check(await pv.evaluate(() => getComputedStyle(document.querySelector('.top')).gridTemplateColumns.split(' ').length === 1),
+      'usa la disposición vertical (en columna)');
+    await layoutOk('letras (grilla)');
+    if (fullCheck) await vReachable('letras (grilla)');
+    if (SHOTS) await pv.screenshot({ path: path.join(SHOTS, `v-${w}x${h}-1.png`) });
+    await vtap('let-0');
+    check((await vstate()).word.length === 1, 'tocar una letra la agrega');
+    const letterPx = await pv.evaluate(() => parseFloat(getComputedStyle(document.querySelector('[data-k="let-0"]')).fontSize));
+    check(letterPx >= h * 0.04, `letras grandes (${Math.round(letterPx)}px ≥ 4vh)`);
+    await layoutOk('letras (círculo)');
+    if (fullCheck) await vReachable('letras (círculo)');
+    if (SHOTS) await pv.screenshot({ path: path.join(SHOTS, `v-${w}x${h}-2.png`) });
+    await vtap('pred-0');
+    check((await vstate()).word === '' && (await vstate()).text.length > 0, 'tocar una predicción la agrega');
+    await vtap('bar-phr'); await layoutOk('frases'); if (fullCheck) await vReachable('frases');
+    if (SHOTS) await pv.screenshot({ path: path.join(SHOTS, `v-${w}x${h}-3.png`) });
+    await vtap('bar-words'); await layoutOk('palabras'); if (fullCheck) await vReachable('palabras');
+    await vtap('volver'); await vtap('num'); await layoutOk('números'); if (fullCheck) await vReachable('números');
+    await vtap('main-0');
+    await vtap('bar-show'); await layoutOk('mensaje en grande');
+    await vtap('ov-1');
+
+    // Girar el celular: pasa a la disposición horizontal sin perder el mensaje, y vuelve.
+    const msg = await vstate();
+    await pv.setViewportSize({ width: h, height: w }); await pv.waitForTimeout(200);
+    check(await pv.evaluate(() => getComputedStyle(document.querySelector('.top')).gridTemplateColumns.split(' ').length === 2),
+      'al girar a horizontal usa la disposición horizontal');
+    await pv.setViewportSize({ width: w, height: h }); await pv.waitForTimeout(200);
+    const after = await vstate();
+    check(after.text === msg.text && after.word === msg.word, 'al girar no se pierde el mensaje');
+    await ctx.close();
+  }
+
   check(errors.length === 0, 'sin errores de JavaScript' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close();
   if (fails.length) { console.log(`\n${fails.length} FALLA(S)`); process.exit(1); }
