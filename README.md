@@ -90,6 +90,8 @@ con "Escuchar un ejemplo".
 - Los problemas y las mejoras se cargan como **Issues** en GitHub, con las plantillas *Problema (bug)* o
   *Mejora (historia)*. Se pueden cargar desde el celular, con la app de GitHub, y adjuntar capturas.
 - Cada sprint se marca con la etiqueta `sprint-N`.
+- El proyecto crece **sumando plataformas de forma incremental**: lo que funciona en una plataforma
+  no se rompe al agregar otra.
 - Nada se da por terminado si no cumple [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md). Lo principal:
   **no romper lo que ya funcionaba, salvo que la historia lo pida explícitamente**.
 - Prueba de regresión: `node tests/regresion.js` (también corre sola en GitHub Actions con cada cambio).

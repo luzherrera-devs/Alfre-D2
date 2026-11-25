@@ -47,6 +47,6 @@ body:
       label: Definición de terminado
       description: Se cierra solo si cumple el archivo DEFINITION_OF_DONE.md del repo.
       options:
-        - label: "No rompe nada de lo que ya funcionaba (salvo cambio pedido explícitamente en este issue)"
+        - label: "No rompe nada de lo que ya funcionaba en ninguna plataforma: tele, navegador, celular... (salvo cambio pedido explícitamente en este issue)"
         - label: "Pasa la prueba de regresión y el APK compila"
         - label: "Probado en el dispositivo real"

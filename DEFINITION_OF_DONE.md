@@ -2,6 +2,14 @@
 
 Una historia o un bug se da por **terminado** solo si cumple todo esto:
 
+## 0. Principio: el proyecto crece por plataformas, de forma incremental
+La idea es **ir sumando plataformas** (hoy: tele con control remoto, navegador de escritorio, celular/tablet
+táctil; más adelante pueden venir otras, por ejemplo gamepad, pulsador o seguimiento de la mirada).
+**Lo que ya está hecho para una plataforma no se rompe al agregar otra.** Cada plataforma nueva se suma
+como una adaptación aparte (por ejemplo, reglas de diseño que solo aplican a esa pantalla o a ese tipo de
+entrada) en lugar de reemplazar lo que funciona en las demás. Si para sumar algo hiciera falta cambiar el
+comportamiento de una plataforma existente, eso se pide explícitamente en la historia.
+
 ## 1. No rompe lo que ya funcionaba
 Nada de lo que funcionaba antes puede dejar de funcionar o cambiar de comportamiento,
 **salvo que la historia pida ese cambio de forma explícita**. En ese caso, el issue dice qué
@@ -19,6 +27,9 @@ Lo que hay que seguir cuidando:
 ## 2. Pruebas
 - Pasa la prueba automática de regresión: `node tests/regresion.js` (también corre sola en GitHub Actions).
 - Si la historia agrega algo nuevo, la prueba se amplía para cubrirlo.
+- Al sumar una plataforma, se le agregan sus propias pruebas **y las pruebas de las plataformas anteriores
+  siguen pasando sin modificarlas** (solo se cambian si la historia pidió explícitamente cambiar ese
+  comportamiento).
 - El APK compila en GitHub Actions.
 
 ## 3. Documentación
